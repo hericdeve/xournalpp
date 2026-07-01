@@ -14,10 +14,9 @@
 /*Style the Floating Toolbox!*/
 #floatingToolbox > box,
 #pdfFloatingToolGrid {
-	background-color: white;
 	border-radius: 12px;
-
-	box-shadow: 0px 0px 3px rgba(0, 0, 0, 0.4);
+	border: 1px solid @borders;
+	box-shadow: 0px 0px 3px alpha(@theme_fg_color, 0.2);
 
 	/* Add a margin. If we don't have this, Gtk clips the shadow!  */
 	margin: 7px;
@@ -28,19 +27,11 @@
 }
 
 #floatingToolbox button {
-	background-color: rgba(255, 255, 255, 0.8);
 	border-radius: 12px;
-}
-
-#pdfFloatingToolGrid button {
-	background: rgba(255, 255, 255, 0.8);
-	border: 12px;
 }
 
 #pdfFloatingToolGrid button:hover {
 	border-radius: 12px;
-	background: rgba(245, 245, 245, 0.8);
-	box-shadow: inset 0px 0px 2px gray;
 }
 
 /*
@@ -48,10 +39,6 @@
 	See https://stackoverflow.com/questions/39824345/use-css-to-style-gtktogglebutton-depending-on-the-state
 */
 #floatingToolbox button:checked {
-	/*background-color: lightblue;*/
-	border-color: lightblue;
-	box-shadow: inset 0px 0px 3px lightblue;
-
 	transition: background-color 0.5s ease, border-color 0.5s ease, margin 0.3s ease;
 }
 
@@ -66,28 +53,7 @@
     box-shadow: none;
 }
 
-window.darkMode #floatingToolbox button,
-window.darkMode #pdfFloatingToolGrid button {
-	background: rgba(55, 53, 53, 0.5);
-	border: none;
-}
 
-window.darkMode #floatingToolbox button:checked {
-	background: rgba(85, 85, 95, 0.1);
-	border-color: lightblue;
-	box-shadow: 0px 0px 3px lightblue;
-}
-
-window.darkMode #floatingToolbox > box,
-window.darkMode #pdfFloatingToolGrid  {
-	background-color: black;
-
-	/*
-	  Lighter gray shadow for better contrast on dark
-	  backgrounds.
-	*/
-	box-shadow: 0px 0px 5px rgba(90, 90, 90, 0.7);
-}
 
 /* Add additional padding and a border to make editing toolbars easier. */
 toolbar.editing {

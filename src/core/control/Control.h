@@ -334,6 +334,7 @@ public:
      * @param y y coordinate relative to main window
      */
     void showFloatingToolbox(int x, int y);
+    void showFloatingToolboxAtCursor();
 
     bool copy();
     bool cut();

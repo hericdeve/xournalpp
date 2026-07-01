@@ -437,6 +437,23 @@ void Control::showFloatingToolbox(int x, int y) {
     this->getWindow()->getFloatingToolbox()->show(mainBoxX, mainBoxY);
 }
 
+void Control::showFloatingToolboxAtCursor() {
+    GtkWidget* mainWindow = GTK_WIDGET(this->getGtkWindow());
+    if (!mainWindow) return;
+    
+    GdkWindow* gdkWindow = gtk_widget_get_window(mainWindow);
+    if (!gdkWindow) return;
+    
+    GdkDisplay* display = gdk_window_get_display(gdkWindow);
+    GdkSeat* seat = gdk_display_get_default_seat(display);
+    GdkDevice* device = gdk_seat_get_pointer(seat);
+    
+    gint x, y;
+    gdk_window_get_device_position(gdkWindow, device, &x, &y, nullptr);
+    
+    this->showFloatingToolbox(x, y);
+}
+
 auto Control::copy() -> bool {
     if (this->win && this->win->getXournal()->copy()) {
         return true;

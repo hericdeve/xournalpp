@@ -23,6 +23,9 @@
         <property name="name">floatingvbox</property>
         <property name="can-focus">False</property>
         <property name="orientation">vertical</property>
+        <style>
+          <class name="osd"/>
+        </style>
         <child>
           <object class="GtkLabel" id="labelFloatingToolbox">
             <property name="name">labelFloatingToolbox</property>
@@ -31,8 +34,6 @@
             <property name="label" translatable="yes"> = Floating Toolbox (experimental) =</property>
             <attributes>
               <attribute name="weight" value="bold"/>
-              <attribute name="foreground" value="#eeeeeeeeecec"/>
-              <attribute name="background" value="#2e2e34343636"/>
             </attributes>
           </object>
           <packing>
@@ -637,6 +638,9 @@
         <property name="orientation">vertical</property>
         <property name="row-spacing">2</property>
         <property name="column-spacing">1</property>
+        <style>
+          <class name="osd"/>
+        </style>
         <child>
           <object class="GtkButton" id="pdfTbCopyText">
             <property name="visible">True</property>

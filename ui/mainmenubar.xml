@@ -567,6 +567,11 @@
      <attribute name="action">win.select-default-tool</attribute>
      <attribute name="accel">&lt;Ctrl&gt;&lt;Shift&gt;d</attribute>
     </item>
+    <item>
+     <attribute name="label" translatable="yes">_Floating Toolbox</attribute>
+     <attribute name="action">win.show-floating-toolbox</attribute>
+     <attribute name="accel">&lt;Ctrl&gt;&lt;Shift&gt;b</attribute>
+    </item>
    </section>
    <section>
     <submenu>

@@ -255,6 +255,18 @@ struct ActionProperties<Action::GRID_SNAPPING> {
 };
 
 template <>
+struct ActionProperties<Action::SHOW_FLOATING_TOOLBOX> {
+#ifdef __APPLE__
+    static constexpr const char* accelerators[] = {"<Meta><Shift>b", nullptr};
+#else
+    static constexpr const char* accelerators[] = {"<Ctrl><Shift>b", nullptr};
+#endif
+    static void callback(GSimpleAction*, GVariant*, Control* ctrl) {
+        ctrl->showFloatingToolboxAtCursor();
+    }
+};
+
+template <>
 struct ActionProperties<Action::PREFERENCES> {
     using app_namespace = std::true_type;
     static void callback(GSimpleAction*, GVariant*, Control* ctrl) { ctrl->showSettings(); }

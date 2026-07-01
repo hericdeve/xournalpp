@@ -103,6 +103,7 @@ enum class Action : size_t {
     PAPER_BACKGROUND_COLOR,
 
     // Menu Tools
+    SHOW_FLOATING_TOOLBOX,
     SELECT_TOOL,
     SELECT_DEFAULT_TOOL,
     TOOL_DRAW_SHAPE_RECOGNIZER,

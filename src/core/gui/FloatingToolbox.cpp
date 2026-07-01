@@ -183,6 +183,43 @@ auto FloatingToolbox::getOverlayPosition(GtkOverlay* overlay, GtkWidget* widget,
 
 bool FloatingToolbox::handleLeaveFloatingToolbox(GtkWidget* floatingToolbox, GdkEvent* event, FloatingToolbox* self) {
     if (floatingToolbox == self->floatingToolbox) {
+        if (event->type == GDK_LEAVE_NOTIFY) {
+            if (event->crossing.mode != GDK_CROSSING_NORMAL) {
+                return true;
+            }
+            if (event->crossing.detail == GDK_NOTIFY_INFERIOR) {
+                return true;
+            }
+            
+            // Sometimes tablet drivers send a NORMAL leave notify when the pen stops moving,
+            // even though the pen is physically still inside the widget.
+            // Let's verify if the pointer's root coordinates are actually outside the widget's bounds.
+            GtkWidget* toplevel = gtk_widget_get_toplevel(floatingToolbox);
+            if (toplevel && gtk_widget_is_toplevel(toplevel)) {
+                gint tx, ty;
+                if (gtk_widget_translate_coordinates(floatingToolbox, toplevel, 0, 0, &tx, &ty)) {
+                    GdkWindow* toplevel_window = gtk_widget_get_window(toplevel);
+                    if (toplevel_window) {
+                        gint root_x, root_y;
+                        gdk_window_get_origin(toplevel_window, &root_x, &root_y);
+                        
+                        gint final_x = root_x + tx;
+                        gint final_y = root_y + ty;
+                        
+                        GtkAllocation alloc;
+                        gtk_widget_get_allocation(floatingToolbox, &alloc);
+                        
+                        gdouble ex = event->crossing.x_root;
+                        gdouble ey = event->crossing.y_root;
+                        
+                        if (ex >= final_x && ex <= final_x + alloc.width && 
+                            ey >= final_y && ey <= final_y + alloc.height) {
+                            return true; // Still inside physically! Ignore the spurious event.
+                        }
+                    }
+                }
+            }
+        }
         if (self->floatingToolboxState != configuration) {
             self->hide();
         }
