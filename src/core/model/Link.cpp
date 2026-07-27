@@ -9,6 +9,8 @@
 #include "util/serializing/ObjectInputStream.h"   // for ObjectInputStream
 #include "util/serializing/ObjectOutputStream.h"  // for ObjectOutputStream
 
+#include "TextAlignment.h"
+
 Link::Link(): Element(ELEMENT_LINK) {
     this->font.setName("Sans");
     this->font.setSize(12);
@@ -20,10 +22,7 @@ void Link::setText(std::string text) { this->text = text; }
 
 std::string Link::getText() const { return this->text; }
 
-void Link::setTextPos(double x, double y) {
-    this->setX(x - PADDING);
-    this->setY(y - PADDING);
-}
+void Link::setTextPos(double x, double y) { this->setOrigin(x - PADDING, y - PADDING); }
 
 void Link::setUrl(std::string url) { this->url = url; }
 
@@ -60,7 +59,8 @@ void Link::readSerialized(ObjectInputStream& in) {
 
     this->url = in.readString();
 
-    this->alignment = static_cast<LinkAlignment::Value>(in.readInt());
+    this->alignment = static_cast<TextAlignment::Value>(in.readInt());
+    this->alignment.validate();
 
     font.readSerialized(in);
 
@@ -78,8 +78,8 @@ void Link::scale(double x0, double y0, double fx, double fy, double rotation, bo
     textPos -= xoj::util::Point(x0, y0);
     textPos *= fx;
     textPos += xoj::util::Point(x0, y0);
-    this->x = textPos.x - PADDING;
-    this->y = textPos.y - PADDING;
+    this->boundingBox.x = textPos.x - PADDING;
+    this->boundingBox.y = textPos.y - PADDING;
 
     double size = this->font.getSize() * fx;
     this->font.setSize(size);
@@ -95,10 +95,7 @@ ElementPtr Link::clone() const {
     link->text = this->text;
     link->url = this->url;
     link->setColor(this->getColor());
-    link->x = this->x;
-    link->y = this->y;
-    link->width = this->width;
-    link->height = this->height;
+    link->boundingBox = this->boundingBox;
     link->snappedBounds = this->snappedBounds;
     link->sizeCalculated = this->sizeCalculated;
     return link;
@@ -111,9 +108,10 @@ void Link::calcSize() const {
     pango_layout_get_size(layout.get(), &w, &h);
     double textWidth = (static_cast<double>(w)) / PANGO_SCALE;
     double textHeight = (static_cast<double>(h)) / PANGO_SCALE;
-    this->width = textWidth + 2 * PADDING;
-    this->height = textHeight + 2 * PADDING;
-    this->snappedBounds = xoj::util::Rectangle<double>(this->x + PADDING, this->y + PADDING, textWidth, textHeight);
+    this->boundingBox.width = textWidth + 2 * PADDING;
+    this->boundingBox.height = textHeight + 2 * PADDING;
+    this->snappedBounds = xoj::util::Rectangle<double>(this->boundingBox.x + PADDING, this->boundingBox.y + PADDING,
+                                                       textWidth, textHeight);
 };
 
 auto Link::createPangoLayout() const -> xoj::util::GObjectSPtr<PangoLayout> {
@@ -129,9 +127,7 @@ auto Link::createPangoLayout() const -> xoj::util::GObjectSPtr<PangoLayout> {
     pango_layout_set_font_description(layout.get(), font);
     pango_font_description_free(font);
 
-    PangoAlignment alignment = PANGO_ALIGNMENT[this->alignment];
-
-    pango_layout_set_alignment(layout.get(), alignment);
+    pango_layout_set_alignment(layout.get(), alignment.toPango());
 
     return layout;
 }
@@ -140,6 +136,6 @@ auto Link::rescaleOnlyAspectRatio() const -> bool { return true; }
 
 auto Link::rescaleWithMirror() const -> bool { return true; }
 
-void Link::setAlignment(LinkAlignment alignment) { this->alignment = alignment; }
+void Link::setAlignment(TextAlignment alignment) { this->alignment = alignment; }
 
-LinkAlignment Link::getAlignment() const { return this->alignment; }
+TextAlignment Link::getAlignment() const { return this->alignment; }

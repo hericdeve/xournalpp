@@ -18,10 +18,10 @@
 #include "control/xojfile/XmlAttrs.h"                  // for XmlAttrs
 #include "control/xojfile/XmlParserHelper.h"           // for getAttrib...
 #include "control/xojfile/XmlTags.h"                   // for XmlTags
-#include "model/Link.h"                                // for LinkAlignment
 #include "model/PageType.h"                            // for PageType
 #include "model/Point.h"                               // for Point
 #include "model/Stroke.h"                              // for StrokeTool, StrokeCapStyle
+#include "model/TextAlignment.h"                       // for TextAlignment
 #include "util/Assert.h"                               // for xoj_assert
 #include "util/Color.h"                                // for Color
 #include "util/EnumIndexedArray.h"                     // for EnumIndexedArray
@@ -425,6 +425,7 @@ void XmlParser::parseTextTag(const XmlParserHelper::AttributeMap& attributeMap) 
     const auto x = XmlParserHelper::getAttribMandatory<double>(xoj::xml_attrs::X_COORD_STR, attributeMap);
     const auto y = XmlParserHelper::getAttribMandatory<double>(xoj::xml_attrs::Y_COORD_STR, attributeMap);
     const auto color = XmlParserHelper::getAttribColorMandatory(attributeMap, Colors::black);
+    const auto wrap = XmlParserHelper::getAttrib<double>(xoj::xml_attrs::WRAP_STR, attributeMap);
 
     // audio filename and timestamp
     const auto optFilename = XmlParserHelper::getAttrib<fs::path>(xoj::xml_attrs::AUDIO_FILENAME_STR, attributeMap);
@@ -437,7 +438,7 @@ void XmlParser::parseTextTag(const XmlParserHelper::AttributeMap& attributeMap) 
                 XmlParserHelper::getAttribMandatory<size_t>(xoj::xml_attrs::TIMESTAMP_STR, attributeMap, 0UL);
     }
 
-    this->builder.addText(std::string{font}, size, x, y, color, std::move(tempFilename), tempTimestamp);
+    this->builder.addText(std::string{font}, size, x, y, color, wrap, std::move(tempFilename), tempTimestamp);
 
     this->tempTimestamp = 0;
 }
@@ -481,8 +482,8 @@ void XmlParser::parseTexImageText(std::string_view text) {
 }
 
 void XmlParser::parseLinkTag(const XmlParserHelper::AttributeMap& attributeMap) {
-    const auto align = XmlParserHelper::getAttribMandatory<LinkAlignment>(xoj::xml_attrs::ALIGN_STR, attributeMap,
-                                                                          LinkAlignment::LEFT);
+    const auto align = XmlParserHelper::getAttribMandatory<TextAlignment>(xoj::xml_attrs::ALIGN_STR, attributeMap,
+                                                                          TextAlignment::LEFT);
     const auto font =
             XmlParserHelper::getAttribMandatory<std::string_view>(xoj::xml_attrs::FONT_STR, attributeMap, "Sans");
     const auto size = XmlParserHelper::getAttribMandatory<double>(xoj::xml_attrs::SIZE_STR, attributeMap, 12);
