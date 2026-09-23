@@ -19,7 +19,9 @@
 #include "control/tools/CursorSelectionType.h"  // for CursorSelectionType
 #include "control/tools/EditSelection.h"        // for EditSelection
 #include "control/zoom/ZoomControl.h"           // for ZoomControl
+#include "gui/FloatingToolbox.h"                // for FloatingToolbox
 #include "gui/Layout.h"                         // for Layout
+#include "gui/MainWindow.h"                     // for MainWindow
 #include "gui/PageView.h"                       // for XojPageView
 #include "gui/XournalView.h"                    // for XournalView
 #include "gui/XournalppCursor.h"                // for XournalppCursor
@@ -53,6 +55,14 @@ void PenInputHandler::updateLastEvent(InputEvent const& event) {
 }
 
 void PenInputHandler::handleScrollEvent(InputEvent const& event) {
+    if (auto* win = this->inputContext->getView()->getControl()->getWindow()) {
+        if (auto* ft = win->getFloatingToolbox(); ft && ft->isVisible() && !ft->isConfiguring()) {
+            if (!ft->isPointerInside()) {
+                ft->hide();
+            }
+        }
+    }
+
     // use root coordinates as reference point because
     // scrolling changes window relative coordinates
     // see github Gnome/evince@1adce5486b10e763bed869
@@ -100,6 +110,16 @@ auto PenInputHandler::actionStart(InputEvent const& event) -> bool {
     // Flag running input
     ToolHandler* toolHandler = this->inputContext->getToolHandler();
     ToolType toolType = toolHandler->getToolType();
+
+    if (toolType != TOOL_FLOATING_TOOLBOX) {
+        if (auto* win = this->inputContext->getView()->getControl()->getWindow()) {
+            if (auto* ft = win->getFloatingToolbox(); ft && ft->isVisible() && !ft->isConfiguring()) {
+                if (!ft->isPointerInside()) {
+                    ft->hide();
+                }
+            }
+        }
+    }
 
     //
     if (toolType != TOOL_IMAGE) {

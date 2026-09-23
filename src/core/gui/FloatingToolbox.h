@@ -13,10 +13,11 @@
 
 
 #include <gdk/gdk.h>  // for GdkEvent, GdkRectangle
-#include <glib.h>     // for gboolean
+#include <glib.h>     // for gboolean, guint
 #include <gtk/gtk.h>  // for GtkWidget, GtkOverlay
 
 #include "util/raii/GObjectSPtr.h"
+#include "util/raii/GSourceURef.h"
 
 class MainWindow;
 
@@ -58,6 +59,15 @@ public:
     /// Returns true if currently in configuration mode.
     bool isConfiguring() const;
 
+    /// Schedule auto-hide after delay (defaults to 150ms).
+    void scheduleHide(guint delayMs = 150);
+
+    /// Cancel any scheduled auto-hide.
+    void cancelScheduledHide();
+
+    /// Returns true if the pointer is currently inside the floating toolbox bounds.
+    bool isPointerInside() const;
+
     /**
      * flagRecalculateSizeRequired(): trigger recalc size on next getOverlayPosition. Used when new toolbars loaded.
      */
@@ -73,6 +83,16 @@ private:
      * Callback to hide floating Toolbar when mouse leaves it
      */
     static bool handleLeaveFloatingToolbox(GtkWidget* floatingToolbox, GdkEvent* event, FloatingToolbox* self);
+
+    /**
+     * Callback when mouse enters floating Toolbar
+     */
+    static bool handleEnterFloatingToolbox(GtkWidget* floatingToolbox, GdkEvent* event, FloatingToolbox* self);
+
+    /**
+     * Callback when debounced hide timer expires
+     */
+    static void onScheduledHideTimeout(FloatingToolbox* self);
 
     /**
      * Show the Floating Toolbox
@@ -98,7 +118,10 @@ private:
     xoj::util::GObjectSPtr<GtkOverlay> overlay;
 
     gulong leaveNotifyId = 0;
+    gulong enterNotifyId = 0;
     gulong getChildPositionId = 0;
+
+    xoj::util::GSourceURef scheduledHideTimer;
 
     /**
      * Communicating with getOverlayPosition callback
