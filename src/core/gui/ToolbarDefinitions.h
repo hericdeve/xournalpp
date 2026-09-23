@@ -34,11 +34,12 @@ const static ToolbarEntryDefintion TOOLBAR_DEFINITIONS[] = {
         {"tbBottom1", "toolbarBottom1", true}, {"tbBottom2", "toolbarBottom2", true},
         {"tbFloat1", "toolbarFloat1", true},  // define this index below as TBFloatFirst
         {"tbFloat2", "toolbarFloat2", true},   {"tbFloat3", "toolbarFloat3", true},
-        {"tbFloat4", "toolbarFloat4", true}  // define this index below as TBFloatLast
+        {"tbFloat4", "toolbarFloat4", true},   {"tbFloat5", "toolbarFloat5", true},
+        {"tbFloat6", "toolbarFloat6", true}  // define this index below as TBFloatLast
 };
 
 
 const static int TOOLBAR_DEFINITIONS_LEN = G_N_ELEMENTS(TOOLBAR_DEFINITIONS);
 
 #define TBFloatFirst 8
-#define TBFloatLast 11
+#define TBFloatLast 13

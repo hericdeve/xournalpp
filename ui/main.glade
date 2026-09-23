@@ -103,6 +103,36 @@
           </packing>
         </child>
         <child>
+          <object class="GtkToolbar" id="tbFloat5">
+            <property name="name">tbFloat5</property>
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <style>
+              <class name="tbCss"/>
+            </style>
+          </object>
+          <packing>
+            <property name="expand">True</property>
+            <property name="fill">True</property>
+            <property name="position">5</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkToolbar" id="tbFloat6">
+            <property name="name">tbFloat6</property>
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <style>
+              <class name="tbCss"/>
+            </style>
+          </object>
+          <packing>
+            <property name="expand">True</property>
+            <property name="fill">True</property>
+            <property name="position">6</property>
+          </packing>
+        </child>
+        <child>
           <object class="GtkLabel" id="showIfEmpty">
             <property name="name">showIfEmpty</property>
             <property name="visible">True</property>
@@ -116,7 +146,7 @@
           <packing>
             <property name="expand">False</property>
             <property name="fill">True</property>
-            <property name="position">5</property>
+            <property name="position">7</property>
           </packing>
         </child>
         <style>
