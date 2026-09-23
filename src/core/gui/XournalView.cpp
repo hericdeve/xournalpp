@@ -22,6 +22,7 @@
 #include "control/tools/EditSelection.h"         // for EditSelection
 #include "control/zoom/ZoomControl.h"            // for ZoomControl
 #include "gui/MainWindow.h"                      // for MainWindow
+#include "gui/FloatingToolbox.h"                 // for FloatingToolbox
 #include "gui/PdfFloatingToolbox.h"              // for PdfFloatingToolbox
 #include "gui/inputdevices/GeometryToolInputHandler.h"  // for GeometryToolInputHandler
 #include "gui/inputdevices/HandRecognition.h"    // for HandRecognition
@@ -164,6 +165,20 @@ auto XournalView::onKeyPressEvent(const KeyEvent& event) -> bool {
         if ((keyval == GDK_KEY_c && state == GDK_CONTROL_MASK) || keyval == GDK_KEY_Copy) {
             // Shortcut to get selected PDF text.
             tool->copyTextToClipboard();
+            return true;
+        }
+        if (keyval == GDK_KEY_Escape) {
+            tool->userCancelSelection();
+            if (size_t p = getCurrentPage(); p != npos && p < this->viewPages.size()) {
+                this->viewPages[p]->repaintPage();
+            }
+            return true;
+        }
+    }
+
+    if (keyval == GDK_KEY_Escape) {
+        if (auto* ft = getControl()->getWindow()->getFloatingToolbox(); ft && ft->isVisible() && !ft->isConfiguring()) {
+            ft->hide();
             return true;
         }
     }
@@ -392,6 +407,9 @@ void XournalView::pageSelected(size_t page) {
     }
 
     control->getWindow()->getPdfToolbox()->userCancelSelection();
+    if (auto* ft = control->getWindow()->getFloatingToolbox(); ft && !ft->isConfiguring()) {
+        ft->hide();
+    }
 
     if (this->lastSelectedPage != npos && this->lastSelectedPage < this->viewPages.size()) {
         this->viewPages[this->lastSelectedPage]->setSelected(false);
@@ -574,6 +592,9 @@ void XournalView::zoomChanged() {
     // if we changed the zoom of the page, we should hide the pdf floating toolbox
     // and if user clicked the selection again, the floating toolbox shows again
     control->getWindow()->getPdfToolbox()->hide();
+    if (auto* ft = control->getWindow()->getFloatingToolbox(); ft && !ft->isConfiguring()) {
+        ft->hide();
+    }
 
     this->control->getScheduler()->blockRerenderZoom();
 

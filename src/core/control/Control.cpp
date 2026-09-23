@@ -428,12 +428,15 @@ void Control::resetGeometryTool() {
 
 void Control::showFloatingToolbox(int x, int y) {
     GtkWidget* mainWindow = GTK_WIDGET(this->getGtkWindow());
-    GtkWidget* mainBox = this->getWindow()->get("mainBox");
+    GtkWidget* overlay = this->getWindow()->get("mainOverlay");
 
-    gint mainBoxX, mainBoxY;
-    gtk_widget_translate_coordinates(mainWindow, mainBox, x, y, &mainBoxX, &mainBoxY);
+    gint overlayX = x;
+    gint overlayY = y;
+    if (mainWindow && overlay) {
+        gtk_widget_translate_coordinates(mainWindow, overlay, x, y, &overlayX, &overlayY);
+    }
 
-    this->getWindow()->getFloatingToolbox()->show(mainBoxX, mainBoxY);
+    this->getWindow()->getFloatingToolbox()->show(overlayX, overlayY);
 }
 
 void Control::showFloatingToolboxAtCursor() {

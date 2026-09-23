@@ -18,30 +18,44 @@
 #include "XournalView.h"
 
 
-FloatingToolbox::FloatingToolbox(MainWindow* theMainWindow, GtkOverlay* overlay) {
-    this->mainWindow = theMainWindow;
-    this->floatingToolbox = theMainWindow->get("floatingToolbox");
-    this->floatingToolboxX = 200;
-    this->floatingToolboxY = 200;
-    this->floatingToolboxState = recalcSize;
+FloatingToolbox::FloatingToolbox(MainWindow* theMainWindow, GtkOverlay* overlay):
+        mainWindow(theMainWindow),
+        floatingToolbox(theMainWindow->get("floatingToolbox")),
+        overlay(overlay, xoj::util::ref),
+        floatingToolboxX(200),
+        floatingToolboxY(200),
+        floatingToolboxState(recalcSize) {
 
     gtk_overlay_add_overlay(overlay, this->floatingToolbox);
     gtk_overlay_set_overlay_pass_through(overlay, this->floatingToolbox, true);
     gtk_widget_add_events(this->floatingToolbox, GDK_LEAVE_NOTIFY_MASK);
-    g_signal_connect(this->floatingToolbox, "leave-notify-event",
-                     xoj::util::wrap_for_g_callback_v<handleLeaveFloatingToolbox>, this);
+
+    this->leaveNotifyId = g_signal_connect(this->floatingToolbox, "leave-notify-event",
+                                           xoj::util::wrap_for_g_callback_v<handleLeaveFloatingToolbox>, this);
     // position overlay widgets
-    g_signal_connect(overlay, "get-child-position", xoj::util::wrap_for_g_callback_v<getOverlayPosition>, this);
+    this->getChildPositionId =
+            g_signal_connect(overlay, "get-child-position", xoj::util::wrap_for_g_callback_v<getOverlayPosition>, this);
 }
 
 
-FloatingToolbox::~FloatingToolbox() = default;
+FloatingToolbox::~FloatingToolbox() {
+    if (this->leaveNotifyId > 0 && this->floatingToolbox) {
+        g_signal_handler_disconnect(this->floatingToolbox, this->leaveNotifyId);
+        this->leaveNotifyId = 0;
+    }
+    if (this->getChildPositionId > 0 && this->overlay) {
+        g_signal_handler_disconnect(this->overlay.get(), this->getChildPositionId);
+        this->getChildPositionId = 0;
+    }
+}
 
 
 void FloatingToolbox::show(int x, int y) {
     this->floatingToolboxX = x;
     this->floatingToolboxY = y;
+    this->floatingToolboxState = recalcSize;
     this->show();
+    gtk_widget_queue_resize(this->floatingToolbox);
 }
 
 
@@ -87,31 +101,67 @@ auto FloatingToolbox::hasWidgets() -> bool {
 
 
 void FloatingToolbox::showForConfiguration() {
-    if (this->floatingToolboxActivated()) {
-        this->floatingToolboxState = configuration;
-        this->show();
-    }
+    this->floatingToolboxState = configuration;
+    this->show();
+    gtk_widget_queue_resize(this->floatingToolbox);
 }
 
 
 void FloatingToolbox::show() {
-    gtk_widget_show_all(this->floatingToolbox);
-    gtk_widget_set_visible(this->mainWindow->get("labelFloatingToolbox"), this->floatingToolboxState == configuration);
-    gtk_widget_set_visible(this->mainWindow->get("showIfEmpty"),
-                           this->floatingToolboxState != configuration && !hasWidgets());
+    gtk_widget_show(this->floatingToolbox);
+
+    bool isConfig = (this->floatingToolboxState == configuration);
+    bool anyWidgets = this->hasWidgets();
+
+    gtk_widget_set_visible(this->mainWindow->get("labelFloatingToolbox"), isConfig);
+
+    for (int index = TBFloatFirst; index <= TBFloatLast; index++) {
+        GtkWidget* tbWidget = this->mainWindow->get(TOOLBAR_DEFINITIONS[index].guiName);
+        if (tbWidget) {
+            if (isConfig) {
+                gtk_widget_show_all(tbWidget);
+            } else {
+                GtkToolbar* toolbar = GTK_TOOLBAR(tbWidget);
+                bool hasItems = (gtk_toolbar_get_n_items(toolbar) > 0);
+                if (hasItems) {
+                    gtk_widget_show_all(tbWidget);
+                } else {
+                    gtk_widget_hide(tbWidget);
+                }
+            }
+        }
+    }
+
+    gtk_widget_set_visible(this->mainWindow->get("showIfEmpty"), !isConfig && !anyWidgets);
+    GtkWidget* vbox = this->mainWindow->get("floatingvbox");
+    if (vbox) {
+        gtk_widget_show(vbox);
+    }
 }
 
 
 void FloatingToolbox::hide() {
-    if (this->floatingToolboxState == configuration) {
-        this->floatingToolboxState = recalcSize;
-    }
-
+    this->floatingToolboxState = recalcSize;
     gtk_widget_hide(this->floatingToolbox);
 }
 
 
-void FloatingToolbox::flagRecalculateSizeRequired() { this->floatingToolboxState = recalcSize; }
+bool FloatingToolbox::isVisible() const {
+    return this->floatingToolbox && gtk_widget_is_visible(this->floatingToolbox);
+}
+
+
+bool FloatingToolbox::isConfiguring() const {
+    return this->floatingToolboxState == configuration;
+}
+
+
+void FloatingToolbox::flagRecalculateSizeRequired() {
+    this->floatingToolboxState = recalcSize;
+    if (this->floatingToolbox) {
+        gtk_widget_queue_resize(this->floatingToolbox);
+    }
+}
 
 
 /**
@@ -120,7 +170,7 @@ void FloatingToolbox::flagRecalculateSizeRequired() { this->floatingToolboxState
  * The requested location is communicated via the FloatingToolbox member variables:
  * ->floatingToolbox,		so we can operate on the right widget
  * ->floatingToolboxState,	are we configuring, resizing or just moving
- * ->floatingToolboxX,		where to display
+ * ->floatingToolboxX,		where to display (in GtkOverlay coordinates)
  * ->floatingToolboxY.
  *
  */
@@ -139,9 +189,6 @@ auto FloatingToolbox::getOverlayPosition(GtkOverlay* overlay, GtkWidget* widget,
         allocation->height = natural.height;
     }
 
-    GtkWidget* scrolledWindow =
-            gtk_widget_get_ancestor(self->mainWindow->getXournal()->getWidget(), GTK_TYPE_SCROLLED_WINDOW);
-
     switch (self->floatingToolboxState) {
         case recalcSize:
             [[fallthrough]];
@@ -149,16 +196,14 @@ auto FloatingToolbox::getOverlayPosition(GtkOverlay* overlay, GtkWidget* widget,
             int centerX = self->floatingToolboxX - allocation->width / 2;
             int centerY = self->floatingToolboxY - allocation->height / 2;
 
-            // Clamp to scrolled window bounds with margin
             constexpr int margin = 10;
-            int minX = margin;
-            int maxX = gtk_widget_get_allocated_width(scrolledWindow) - allocation->width - margin;
-            int minY = margin;
-            int maxY = gtk_widget_get_allocated_height(scrolledWindow) - allocation->height - margin;
+            int overlayWidth = gtk_widget_get_allocated_width(GTK_WIDGET(overlay));
+            int overlayHeight = gtk_widget_get_allocated_height(GTK_WIDGET(overlay));
 
-            // Ensure valid clamp bounds when toolbox is larger than viewport
-            maxX = std::max(maxX, minX);
-            maxY = std::max(maxY, minY);
+            int minX = margin;
+            int maxX = std::max(minX, overlayWidth - allocation->width - margin);
+            int minY = margin;
+            int maxY = std::max(minY, overlayHeight - allocation->height - margin);
 
             allocation->x = std::clamp(centerX, minX, maxX);
             allocation->y = std::clamp(centerY, minY, maxY);
@@ -174,10 +219,34 @@ auto FloatingToolbox::getOverlayPosition(GtkOverlay* overlay, GtkWidget* widget,
             break;
     }
 
-    gtk_widget_translate_coordinates(scrolledWindow, GTK_WIDGET(overlay), allocation->x, allocation->y, &allocation->x,
-                                     &allocation->y);
-
     return true;
+}
+
+
+static bool isPopoverActive(GtkWidget* widget) {
+    if (!widget) {
+        return false;
+    }
+    if (GTK_IS_MENU_BUTTON(widget)) {
+        GtkPopover* popover = gtk_menu_button_get_popover(GTK_MENU_BUTTON(widget));
+        if (popover && gtk_widget_is_visible(GTK_WIDGET(popover))) {
+            return true;
+        }
+    }
+    if (GTK_IS_CONTAINER(widget)) {
+        bool active = false;
+        gtk_container_forall(
+                GTK_CONTAINER(widget),
+                +[](GtkWidget* child, gpointer data) {
+                    auto* pActive = static_cast<bool*>(data);
+                    if (!*pActive && isPopoverActive(child)) {
+                        *pActive = true;
+                    }
+                },
+                &active);
+        return active;
+    }
+    return false;
 }
 
 
@@ -190,31 +259,38 @@ bool FloatingToolbox::handleLeaveFloatingToolbox(GtkWidget* floatingToolbox, Gdk
             if (event->crossing.detail == GDK_NOTIFY_INFERIOR) {
                 return true;
             }
-            
-            // Sometimes tablet drivers send a NORMAL leave notify when the pen stops moving,
-            // even though the pen is physically still inside the widget.
-            // Let's verify if the pointer's root coordinates are actually outside the widget's bounds.
+
+            // Do not dismiss while a child popover/menu is open
+            if (isPopoverActive(self->floatingToolbox)) {
+                return true;
+            }
+
+            // Sometimes tablet drivers send a spurious NORMAL leave notify when the pen stops moving or lifts slightly.
+            // Check if the pointer is still inside the widget bounds using toplevel widget coordinates.
+            // This works correctly on Wayland without relying on gdk_window_get_origin.
             GtkWidget* toplevel = gtk_widget_get_toplevel(floatingToolbox);
             if (toplevel && gtk_widget_is_toplevel(toplevel)) {
-                gint tx, ty;
+                gint tx = 0, ty = 0;
                 if (gtk_widget_translate_coordinates(floatingToolbox, toplevel, 0, 0, &tx, &ty)) {
-                    GdkWindow* toplevel_window = gtk_widget_get_window(toplevel);
-                    if (toplevel_window) {
-                        gint root_x, root_y;
-                        gdk_window_get_origin(toplevel_window, &root_x, &root_y);
-                        
-                        gint final_x = root_x + tx;
-                        gint final_y = root_y + ty;
-                        
+                    GdkWindow* toplevelWindow = gtk_widget_get_window(toplevel);
+                    if (toplevelWindow) {
+                        GdkDisplay* display = gdk_window_get_display(toplevelWindow);
+                        GdkSeat* seat = display ? gdk_display_get_default_seat(display) : nullptr;
+                        GdkDevice* device = gdk_event_get_device(event);
+                        if (!device && seat) {
+                            device = gdk_seat_get_pointer(seat);
+                        }
+
+                        gint px = 0, py = 0;
+                        if (device) {
+                            gdk_window_get_device_position(toplevelWindow, device, &px, &py, nullptr);
+                        }
+
                         GtkAllocation alloc;
                         gtk_widget_get_allocation(floatingToolbox, &alloc);
-                        
-                        gdouble ex = event->crossing.x_root;
-                        gdouble ey = event->crossing.y_root;
-                        
-                        if (ex >= final_x && ex <= final_x + alloc.width && 
-                            ey >= final_y && ey <= final_y + alloc.height) {
-                            return true; // Still inside physically! Ignore the spurious event.
+
+                        if (px >= tx && px <= tx + alloc.width && py >= ty && py <= ty + alloc.height) {
+                            return true;  // Still physically inside!
                         }
                     }
                 }

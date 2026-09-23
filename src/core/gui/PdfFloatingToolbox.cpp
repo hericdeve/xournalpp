@@ -39,19 +39,48 @@ PdfFloatingToolbox::PdfFloatingToolbox(MainWindow* theMainWindow, GtkOverlay* ov
     gtk_overlay_add_overlay(overlay, this->floatingToolbox);
     gtk_overlay_set_overlay_pass_through(overlay, this->floatingToolbox, true);
 
-    g_signal_connect(overlay, "get-child-position", G_CALLBACK(this->getOverlayPosition), this);
+    this->getChildPositionId =
+            g_signal_connect(overlay, "get-child-position", G_CALLBACK(this->getOverlayPosition), this);
 
-    g_signal_connect(theMainWindow->get("pdfTbHighlight"), "clicked", G_CALLBACK(this->highlightCb), this);
-    g_signal_connect(theMainWindow->get("pdfTbCopyText"), "clicked", G_CALLBACK(this->copyTextCb), this);
-    g_signal_connect(theMainWindow->get("pdfTbUnderline"), "clicked", G_CALLBACK(this->underlineCb), this);
-    g_signal_connect(theMainWindow->get("pdfTbStrikethrough"), "clicked", G_CALLBACK(this->strikethroughCb), this);
-    g_signal_connect(theMainWindow->get("pdfTbChangeType"), "clicked", G_CALLBACK(this->switchSelectTypeCb), this);
+    auto connectBtn = [theMainWindow, this](const char* name, GCallback cb, gulong& id) {
+        if (GtkWidget* w = theMainWindow->get(name)) {
+            id = g_signal_connect(w, "clicked", cb, this);
+        }
+    };
+
+    connectBtn("pdfTbHighlight", G_CALLBACK(this->highlightCb), this->highlightId);
+    connectBtn("pdfTbCopyText", G_CALLBACK(this->copyTextCb), this->copyTextId);
+    connectBtn("pdfTbUnderline", G_CALLBACK(this->underlineCb), this->underlineId);
+    connectBtn("pdfTbStrikethrough", G_CALLBACK(this->strikethroughCb), this->strikethroughId);
+    connectBtn("pdfTbChangeType", G_CALLBACK(this->switchSelectTypeCb), this->switchSelectTypeId);
+    connectBtn("pdfTbClose", G_CALLBACK(this->closeCb), this->closeId);
 
     this->clearSelection();
     this->hide();
 }
 
-PdfFloatingToolbox::~PdfFloatingToolbox() = default;
+PdfFloatingToolbox::~PdfFloatingToolbox() {
+    if (this->getChildPositionId > 0 && this->overlay) {
+        g_signal_handler_disconnect(this->overlay.get(), this->getChildPositionId);
+        this->getChildPositionId = 0;
+    }
+
+    auto disconnectBtn = [this](const char* name, gulong& id) {
+        if (id > 0 && this->theMainWindow) {
+            if (GtkWidget* w = this->theMainWindow->get(name)) {
+                g_signal_handler_disconnect(w, id);
+            }
+            id = 0;
+        }
+    };
+
+    disconnectBtn("pdfTbHighlight", this->highlightId);
+    disconnectBtn("pdfTbCopyText", this->copyTextId);
+    disconnectBtn("pdfTbUnderline", this->underlineId);
+    disconnectBtn("pdfTbStrikethrough", this->strikethroughId);
+    disconnectBtn("pdfTbChangeType", this->switchSelectTypeId);
+    disconnectBtn("pdfTbClose", this->closeId);
+}
 
 PdfElemSelection* PdfFloatingToolbox::getSelection() const { return this->pdfElemSelection.get(); }
 bool PdfFloatingToolbox::hasSelection() const { return this->getSelection() != nullptr; }
@@ -88,23 +117,24 @@ auto PdfFloatingToolbox::getOverlayPosition(GtkOverlay* overlay, GtkWidget* widg
         allocation->width = natural.width;
         allocation->height = natural.height;
 
-        // Make sure the "pdfFloatingToolbox" is fully displayed.
+        // Position in GtkOverlay coordinate space
         const int gap = 5;
+        int overlayWidth = gtk_widget_get_allocated_width(GTK_WIDGET(overlay));
+        int overlayHeight = gtk_widget_get_allocated_height(GTK_WIDGET(overlay));
 
-        // By default, we show the toolbox below and to the right of the selected text.
-        // If the toolbox will go out of the window, then we'll flip the corresponding directions.
+        bool rightOK = (self->position.x + gap + allocation->width <= overlayWidth - gap);
+        bool bottomOK = (self->position.y + gap + allocation->height <= overlayHeight - gap);
 
-        GtkWidget* scrolledWindow =
-                gtk_widget_get_ancestor(self->theMainWindow->getXournal()->getWidget(), GTK_TYPE_SCROLLED_WINDOW);
+        allocation->x = rightOK ? (self->position.x + gap) : (self->position.x - gap - allocation->width);
+        allocation->y = bottomOK ? (self->position.y + gap) : (self->position.y - gap - allocation->height);
 
-        bool rightOK = self->position.x + allocation->width + gap <= gtk_widget_get_allocated_width(scrolledWindow);
-        bool bottomOK = self->position.y + allocation->height + gap <= gtk_widget_get_allocated_height(scrolledWindow);
+        int minX = gap;
+        int maxX = std::max(minX, overlayWidth - allocation->width - gap);
+        int minY = gap;
+        int maxY = std::max(minY, overlayHeight - allocation->height - gap);
 
-        allocation->x = rightOK ? self->position.x + gap : self->position.x - allocation->width - gap;
-        allocation->y = bottomOK ? self->position.y + gap : self->position.y - allocation->height - gap;
-
-        gtk_widget_translate_coordinates(scrolledWindow, GTK_WIDGET(overlay), allocation->x, allocation->y,
-                                         &allocation->x, &allocation->y);
+        allocation->x = std::clamp(allocation->x, minX, maxX);
+        allocation->y = std::clamp(allocation->y, minY, maxY);
 
         return true;
     }
@@ -115,6 +145,16 @@ auto PdfFloatingToolbox::getOverlayPosition(GtkOverlay* overlay, GtkWidget* widg
 void PdfFloatingToolbox::userCancelSelection() {
     this->pdfElemSelection.reset();
     this->hide();
+}
+
+void PdfFloatingToolbox::closeCb(GtkButton* button, PdfFloatingToolbox* pft) {
+    pft->userCancelSelection();
+    if (auto* xournal = pft->theMainWindow->getXournal()) {
+        size_t p = xournal->getCurrentPage();
+        if (auto* pv = xournal->getViewFor(p)) {
+            pv->repaintPage();
+        }
+    }
 }
 
 void PdfFloatingToolbox::highlightCb(GtkButton* button, PdfFloatingToolbox* pft) {
@@ -151,19 +191,20 @@ void PdfFloatingToolbox::copyTextToClipboard() {
 }
 
 void PdfFloatingToolbox::createStrokes(PdfMarkerStyle position, PdfMarkerStyle width, int markerOpacity) {
-    const size_t pdfPageNo = this->pdfElemSelection->getSelectionPageNr();
-    const size_t currentPage = theMainWindow->getXournal()->getCurrentPage();
+    if (!this->pdfElemSelection) {
+        return;
+    }
 
-    // Get the PDF page that the current page corresponds to.
-    // It should be the same as the PDF page of the selection.
+    const size_t pdfPageNo = this->pdfElemSelection->getSelectionPageNr();
     auto doc = this->theMainWindow->getControl()->getDocument();
+
     doc->lock_shared();
-    const size_t pdfPageOfCurrentPage = doc->getPage(currentPage)->getPdfPageNr();
+    const size_t targetPageNo = doc->findPdfPage(pdfPageNo);
+    PageRef page = (targetPageNo != npos) ? doc->getPage(targetPageNo) : nullptr;
     doc->unlock_shared();
 
-    if (pdfPageOfCurrentPage != pdfPageNo) {
-        // There's probably a bug that violates our assumptions, so no-op.
-        g_warning("The current page's PDF page is not the same as the PDF page of the selection!");
+    if (!page) {
+        g_warning("Could not find document page corresponding to PDF page %zu!", pdfPageNo);
         return;
     }
 
@@ -173,7 +214,6 @@ void PdfFloatingToolbox::createStrokes(PdfMarkerStyle position, PdfMarkerStyle w
     }
 
     auto* control = this->theMainWindow->getControl();
-    PageRef page = control->getCurrentPage();
     Layer* layer = page->getSelectedLayer();
 
     Range dirtyRange;
@@ -224,6 +264,10 @@ void PdfFloatingToolbox::createStrokes(PdfMarkerStyle position, PdfMarkerStyle w
 }
 
 void PdfFloatingToolbox::switchSelectTypeCb(GtkButton* button, PdfFloatingToolbox* pft) {
+    if (!pft->pdfElemSelection) {
+        return;
+    }
+
     ToolType type = pft->theMainWindow->getControl()->getToolHandler()->getToolType();
 
     type = type == ToolType::TOOL_SELECT_PDF_TEXT_LINEAR ? ToolType::TOOL_SELECT_PDF_TEXT_RECT :
@@ -232,7 +276,8 @@ void PdfFloatingToolbox::switchSelectTypeCb(GtkButton* button, PdfFloatingToolbo
     pft->theMainWindow->getControl()->selectTool(type);
 
     pft->pdfElemSelection->setToolType(type);
-    pft->pdfElemSelection->finalizeSelection(PdfElemSelection::selectionStyleForToolType(type));
+    pft->selectionStyle = PdfElemSelection::selectionStyleForToolType(type);
+    pft->pdfElemSelection->finalizeSelectionAndRepaint(pft->selectionStyle);
 }
 
 bool PdfFloatingToolbox::isHidden() const { return !gtk_widget_is_visible(this->floatingToolbox); }

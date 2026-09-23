@@ -76,16 +76,25 @@ private:
     static void underlineCb(GtkButton* button, PdfFloatingToolbox* pft);
     static void copyTextCb(GtkButton* button, PdfFloatingToolbox* pft);
     static void highlightCb(GtkButton* button, PdfFloatingToolbox* pft);
+    static void closeCb(GtkButton* button, PdfFloatingToolbox* pft);
 
     void createStrokes(PdfMarkerStyle position, PdfMarkerStyle width, int markerOpacity);
 
 private:
-    GtkWidget* floatingToolbox;
-    MainWindow* theMainWindow;
+    GtkWidget* floatingToolbox = nullptr;
+    MainWindow* theMainWindow = nullptr;
     Color color;  ///< Used for strokes/highlighting
 
     /// The overlay that the toolbox should be displayed in.
     xoj::util::GObjectSPtr<GtkOverlay> overlay;
+
+    gulong getChildPositionId = 0;
+    gulong highlightId = 0;
+    gulong copyTextId = 0;
+    gulong underlineId = 0;
+    gulong strikethroughId = 0;
+    gulong switchSelectTypeId = 0;
+    gulong closeId = 0;
 
     std::unique_ptr<PdfElemSelection> pdfElemSelection;
 

@@ -239,6 +239,13 @@ auto XojPageView::onButtonPressEvent(const PositionInputData& pos) -> bool {
 
     ToolHandler* h = control->getToolHandler();
 
+    auto* ft = control->getWindow()->getFloatingToolbox();
+    if (ft && ft->isVisible() && !ft->isConfiguring()) {
+        if (h->getToolType() != TOOL_FLOATING_TOOLBOX) {
+            ft->hide();
+        }
+    }
+
     double x = pos.x;
     double y = pos.y;
 
@@ -386,9 +393,7 @@ auto XojPageView::onButtonPressEvent(const PositionInputData& pos) -> bool {
                 } else {
                     showPdfToolbox(pos);
                 }
-            }
-
-            if (this->page->getPdfPageNr() != npos && !pdfToolbox->hasSelection()) {
+            } else if (this->page->getPdfPageNr() != npos) {
                 pdfToolbox->selectionStyle = PdfElemSelection::selectionStyleForToolType(h->getToolType());
                 auto sel = pdfToolbox->newSelection(x, y);
                 this->overlayViews.emplace_back(
@@ -647,11 +652,21 @@ void XojPageView::onTapEvent(const PositionInputData& pos) {
 }
 
 auto XojPageView::showPdfToolbox(const PositionInputData& pos) -> void {
-    // Convert to the widget-coordinate system
-    auto p = xoj::util::Point{pos.x, pos.y} - this->xournal->getScrollHandling()->getPosition();
-    auto q = xoj::util::Point{round_cast<int>(p.x), round_cast<int>(p.y)} + this->getPixelPosition();
+    auto scrollDelta = this->xournal->getScrollHandling()->getPosition();
+    auto pagePos = this->getPixelPosition();
+    int widgetX = round_cast<int>(pos.x - scrollDelta.x) + pagePos.x;
+    int widgetY = round_cast<int>(pos.y - scrollDelta.y) + pagePos.y;
 
-    this->getXournal()->getControl()->getWindow()->getPdfToolbox()->show(q.x, q.y);
+    GtkWidget* xournalWidget = this->xournal->getWidget();
+    GtkWidget* overlay = this->xournal->getControl()->getWindow()->get("mainOverlay");
+
+    int overlayX = widgetX;
+    int overlayY = widgetY;
+    if (xournalWidget && overlay) {
+        gtk_widget_translate_coordinates(xournalWidget, overlay, widgetX, widgetY, &overlayX, &overlayY);
+    }
+
+    this->getXournal()->getControl()->getWindow()->getPdfToolbox()->show(overlayX, overlayY);
 }
 
 void XojPageView::deleteView(xoj::view::OverlayView* view) {
@@ -1186,11 +1201,21 @@ void XojPageView::elementsChanged(const std::vector<const Element*>& elements, c
 }
 
 void XojPageView::showFloatingToolbox(const PositionInputData& pos) {
-    // Convert to the widget-coordinate system
-    auto p = xoj::util::Point{pos.x, pos.y} - this->xournal->getScrollHandling()->getPosition();
-    auto q = xoj::util::Point{round_cast<int>(p.x), round_cast<int>(p.y)} + this->getPixelPosition();
+    auto scrollDelta = this->xournal->getScrollHandling()->getPosition();
+    auto pagePos = this->getPixelPosition();
+    int widgetX = round_cast<int>(pos.x - scrollDelta.x) + pagePos.x;
+    int widgetY = round_cast<int>(pos.y - scrollDelta.y) + pagePos.y;
 
-    this->getXournal()->getControl()->getWindow()->getFloatingToolbox()->show(q.x, q.y);
+    GtkWidget* xournalWidget = this->xournal->getWidget();
+    GtkWidget* overlay = this->xournal->getControl()->getWindow()->get("mainOverlay");
+
+    int overlayX = widgetX;
+    int overlayY = widgetY;
+    if (xournalWidget && overlay) {
+        gtk_widget_translate_coordinates(xournalWidget, overlay, widgetX, widgetY, &overlayX, &overlayY);
+    }
+
+    this->getXournal()->getControl()->getWindow()->getFloatingToolbox()->show(overlayX, overlayY);
 }
 
 void XojPageView::setGridCoordinates(xoj::util::Point<int> coords) { this->gridCoordinates = coords; }

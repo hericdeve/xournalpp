@@ -16,6 +16,8 @@
 #include <glib.h>     // for gboolean
 #include <gtk/gtk.h>  // for GtkWidget, GtkOverlay
 
+#include "util/raii/GObjectSPtr.h"
+
 class MainWindow;
 
 enum FloatingToolBoxState { recalcSize = 0, configuration, noChange };
@@ -33,8 +35,13 @@ public:
     FloatingToolbox(MainWindow* theMainWindow, GtkOverlay* overlay);
     virtual ~FloatingToolbox();
 
+    FloatingToolbox(const FloatingToolbox&) = delete;
+    FloatingToolbox& operator=(const FloatingToolbox&) = delete;
+    FloatingToolbox(FloatingToolbox&&) = delete;
+    FloatingToolbox& operator=(FloatingToolbox&&) = delete;
+
 public:
-    /// Show the toolbox at the provided coordinates (in widget-coordinates).
+    /// Show the toolbox at the provided coordinates (in GtkOverlay coordinate space).
     void show(int x, int y);
 
     /**
@@ -44,6 +51,12 @@ public:
     void showForConfiguration();
 
     void hide();
+
+    /// Returns true if the floating toolbox is currently visible.
+    bool isVisible() const;
+
+    /// Returns true if currently in configuration mode.
+    bool isConfiguring() const;
 
     /**
      * flagRecalculateSizeRequired(): trigger recalc size on next getOverlayPosition. Used when new toolbars loaded.
@@ -80,12 +93,16 @@ private:
 
 
 private:
-    MainWindow* mainWindow;
-    GtkWidget* floatingToolbox;
+    MainWindow* mainWindow = nullptr;
+    GtkWidget* floatingToolbox = nullptr;
+    xoj::util::GObjectSPtr<GtkOverlay> overlay;
+
+    gulong leaveNotifyId = 0;
+    gulong getChildPositionId = 0;
 
     /**
      * Communicating with getOverlayPosition callback
-     * */
+     */
     int floatingToolboxX = 0;
     int floatingToolboxY = 0;
     FloatingToolBoxState floatingToolboxState = recalcSize;
