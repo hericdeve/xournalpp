@@ -526,7 +526,7 @@ void ToolMenuHandler::updateColorToolItems(const Palette& palette) {
 
 void ToolMenuHandler::updateColorToolItemsRecoloring(const std::optional<Recolor>& recolor) {
     for (const auto& it: this->toolbarColorItems) {
-        it->updateSecondaryColor(recolor);
+        it->updateRecolor(recolor);
     }
 }
 

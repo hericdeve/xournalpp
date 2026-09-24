@@ -11,8 +11,6 @@
 
 #pragma once
 
-#include <optional>
-
 #include <gdk-pixbuf/gdk-pixbuf.h>  // for GdkPixbuf
 #include <gtk/gtk.h>                // for GtkWidget
 
@@ -24,12 +22,10 @@ namespace ColorIcon {
  * @brief Create a new GtkImage with preview color
  * @return The pointer is a floating ref
  */
-GtkWidget* newGtkImage(Color color, int size = 22, bool circle = true,
-                       std::optional<Color> secondaryColor = std::nullopt);
+GtkWidget* newGtkImage(Color color, int size = 22, bool circle = true);
 
 /**
  * @brief Create a new GdkPixbuf* with preview color
  */
-xoj::util::GObjectSPtr<GdkPixbuf> newGdkPixbuf(Color color, int size = 22, bool circle = true,
-                                               std::optional<Color> secondaryColor = std::nullopt);
+xoj::util::GObjectSPtr<GdkPixbuf> newGdkPixbuf(Color color, int size = 22, bool circle = true);
 };  // namespace ColorIcon

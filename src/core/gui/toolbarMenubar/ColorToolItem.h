@@ -12,6 +12,7 @@
 #pragma once
 
 #include <optional>
+#include <vector>
 
 #include <gtk/gtk.h>  // for GtkWidget
 
@@ -39,6 +40,7 @@ public:
     GtkWidget* getNewToolIcon() const override;
 
     Color getColor() const;
+    Color getDisplayedColor() const;
 
     /**
      * @brief Update Color based on (new) palette
@@ -48,10 +50,11 @@ public:
     void updateColor(const Palette& palette);
 
     /**
-     * @brief Update secondary Color based on (new) recoloring settings
+     * @brief Update displayed color based on (new) recoloring settings
      *
      * @param recolor
      */
+    void updateRecolor(const std::optional<Recolor>& recolor);
     void updateSecondaryColor(const std::optional<Recolor>& recolor);
 
     xoj::util::WidgetSPtr createItem(bool horizontal) override;
@@ -59,5 +62,7 @@ public:
 private:
     NamedColor namedColor;
     xoj::util::GVariantSPtr target;       ///< Contains the color in ARGB as a uint32_t
-    std::optional<Color> secondaryColor;  //< color for small disk when recoloring is active
+    std::optional<Recolor> recolor;       ///< Active recolor settings for canvas/theme
+    std::vector<GtkWidget*> buttons;      ///< Created buttons for live icon updates
+    std::vector<GtkWidget*> proxyIcons;   ///< Created proxy menu icons for live icon updates
 };
