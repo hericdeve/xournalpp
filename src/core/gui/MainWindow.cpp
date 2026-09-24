@@ -60,6 +60,9 @@ using std::string;
 
 
 static void themeCallback(GObject*, GParamSpec*, gpointer data) { static_cast<MainWindow*>(data)->updateColorscheme(); }
+static void gsettingsThemeCallback(GSettings*, const gchar*, gpointer data) {
+    static_cast<MainWindow*>(data)->updateColorscheme();
+}
 
 MainWindow::MainWindow(GladeSearchpath* gladeSearchPath, Control* control, GtkApplication* parent):
         GladeGui(gladeSearchPath, "main.glade", "mainWindow"),
@@ -149,6 +152,26 @@ MainWindow::MainWindow(GladeSearchpath* gladeSearchPath, Control* control, GtkAp
     g_signal_connect(gtk_widget_get_settings(this->window), "notify::gtk-application-prefer-dark-theme",
                      G_CALLBACK(themeCallback), this);
 
+#ifndef __APPLE__
+    GSettingsSchemaSource* source = g_settings_schema_source_get_default();
+    if (source) {
+        GSettingsSchema* schema = g_settings_schema_source_lookup(source, "org.gnome.desktop.interface", TRUE);
+        if (schema) {
+            this->interfaceSettings =
+                    xoj::util::GObjectSPtr<GSettings>(g_settings_new("org.gnome.desktop.interface"), xoj::util::adopt);
+            if (g_settings_schema_has_key(schema, "color-scheme")) {
+                g_signal_connect(this->interfaceSettings.get(), "changed::color-scheme",
+                                 G_CALLBACK(gsettingsThemeCallback), this);
+            }
+            if (g_settings_schema_has_key(schema, "gtk-theme")) {
+                g_signal_connect(this->interfaceSettings.get(), "changed::gtk-theme",
+                                 G_CALLBACK(gsettingsThemeCallback), this);
+            }
+            g_settings_schema_unref(schema);
+        }
+    }
+#endif
+
     updateColorscheme();
 }
 
@@ -167,7 +190,14 @@ void MainWindow::populate(GladeSearchpath* gladeSearchPath) {
 
 GMenuModel* MainWindow::getMenuModel() const { return menubar->getModel(); }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow() {
+    if (this->interfaceSettings) {
+        g_signal_handlers_disconnect_by_data(this->interfaceSettings.get(), this);
+    }
+    if (this->window) {
+        g_signal_handlers_disconnect_by_data(gtk_widget_get_settings(this->window), this);
+    }
+}
 
 struct ThemeProperties {
     bool dark;
@@ -218,13 +248,61 @@ static ThemeProperties getThemeProperties(GtkWidget* w) {
         }
     }
 #else
-    g_object_get(gtk_widget_get_settings(w), "gtk-application-prefer-dark-theme", &dark, nullptr);
+    bool systemThemeFound = false;
+    GSettingsSchemaSource* source = g_settings_schema_source_get_default();
+    if (source) {
+        GSettingsSchema* schema = g_settings_schema_source_lookup(source, "org.gnome.desktop.interface", TRUE);
+        if (schema) {
+            GSettings* gsettings = g_settings_new("org.gnome.desktop.interface");
+            if (g_settings_schema_has_key(schema, "color-scheme")) {
+                char* scheme = g_settings_get_string(gsettings, "color-scheme");
+                if (scheme) {
+                    if (g_strcmp0(scheme, "prefer-dark") == 0) {
+                        dark = true;
+                        systemThemeFound = true;
+                    } else if (g_strcmp0(scheme, "prefer-light") == 0) {
+                        dark = false;
+                        systemThemeFound = true;
+                    }
+                    g_free(scheme);
+                }
+            }
+            if (!systemThemeFound && g_settings_schema_has_key(schema, "gtk-theme")) {
+                char* gtkTheme = g_settings_get_string(gsettings, "gtk-theme");
+                if (gtkTheme) {
+                    std::string themeStr = gtkTheme;
+                    if (themeStr.find("dark") != std::string::npos || themeStr.find("Dark") != std::string::npos) {
+                        dark = true;
+                        systemThemeFound = true;
+                    } else {
+                        dark = false;
+                        systemThemeFound = true;
+                    }
+                    g_free(gtkTheme);
+                }
+            }
+            g_object_unref(gsettings);
+            g_settings_schema_unref(schema);
+        }
+    }
+
+    if (!systemThemeFound) {
+        g_object_get(gtk_widget_get_settings(w), "gtk-application-prefer-dark-theme", &dark, nullptr);
+    }
 #endif
 
     g_debug("Extracted theme info: Name = %s, rootname = %s, dark = %s", name.get(), props.rootname.c_str(),
             dark ? "true" : "false");
 
+#ifdef __APPLE__
     props.dark = props.darkSuffix || dark;  // Some themes handle their dark variant via this setting
+#else
+    if (systemThemeFound) {
+        props.dark = dark;
+    } else {
+        props.dark = props.darkSuffix || dark;  // Some themes handle their dark variant via this setting
+    }
+#endif
 
     return props;
 }
@@ -355,14 +433,31 @@ void MainWindow::updateCanvasTheme() {
         RecolorParameters active{};
 
         if (canvasMode == CANVAS_THEME_CUSTOM_COLORS) {
+            Color c1 = configured.recolor.getLight();
+            Color c2 = configured.recolor.getDark();
+            Color lightColor = c1;
+            Color darkColor = c2;
+            auto brightness = [](const Color& c) {
+                return uint32_t(c.red) + uint32_t(c.green) + uint32_t(c.blue);
+            };
+            if (brightness(lightColor) < brightness(darkColor)) {
+                std::swap(lightColor, darkColor);
+            }
+
             if (this->darkMode) {
                 active.recolorizeMainView = true;
                 active.recolorizeSidebarMiniatures = configured.recolorizeSidebarMiniatures;
-                active.recolor = configured.recolor;
+                active.recolor = Recolor(darkColor, lightColor);
             } else {
-                active.recolorizeMainView = false;
-                active.recolorizeSidebarMiniatures = false;
-                active.recolor = configured.recolor;
+                if (lightColor == Color(0xff, 0xff, 0xff) && darkColor == Color(0x00, 0x00, 0x00)) {
+                    active.recolorizeMainView = false;
+                    active.recolorizeSidebarMiniatures = false;
+                    active.recolor = Recolor(lightColor, darkColor);
+                } else {
+                    active.recolorizeMainView = true;
+                    active.recolorizeSidebarMiniatures = configured.recolorizeSidebarMiniatures;
+                    active.recolor = Recolor(lightColor, darkColor);
+                }
             }
         } else if (canvasMode == CANVAS_THEME_FOLLOW_SYSTEM) {
             auto [sysBg, sysFg] = getSystemThemeColors(this->window, this->darkMode);

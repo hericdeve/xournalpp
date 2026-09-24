@@ -18,6 +18,7 @@
 #include <string>   // for string
 
 #include <gdk/gdk.h>      // for GdkDragContext, GdkEvent
+#include <gio/gio.h>      // for GSettings
 #include <glib-object.h>  // for GClosure
 #include <glib.h>         // for gpointer, gboolean, gint
 #include <gtk/gtk.h>      // for GtkWidget, GtkCheckMenu...
@@ -189,4 +190,6 @@ private:
     xoj::util::WidgetSPtr panedContainerWidget;
     xoj::util::WidgetSPtr mainContentWidget;
     xoj::util::WidgetSPtr sidebarWidget;
+
+    xoj::util::GObjectSPtr<GSettings> interfaceSettings;
 };
