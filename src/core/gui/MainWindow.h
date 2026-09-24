@@ -104,6 +104,7 @@ public:
 
     void updateToolbarMenu();
     void updateColorscheme();
+    void updateCanvasTheme();
 
     const ToolbarWidgetArray& getToolbarWidgets() const;
     const char* getToolbarName(GtkToolbar* toolbar) const;

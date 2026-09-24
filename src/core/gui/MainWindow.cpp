@@ -24,6 +24,7 @@
 #include "gui/inputdevices/InputEvents.h"               // for INPUT_DEVICE_TOUC...
 #include "gui/menus/menubar/Menubar.h"                  // for Menubar
 #include "gui/menus/menubar/ToolbarSelectionSubmenu.h"  // for ToolbarSelectionSubmenu
+#include "gui/XournalppCursor.h"                        // for XournalppCursor
 #include "gui/scroll/ScrollHandling.h"                  // for ScrollHandling
 #include "gui/sidebar/Sidebar.h"                        // for Sidebar
 #include "gui/toolbarMenubar/ToolMenuHandler.h"         // for ToolMenuHandler
@@ -228,6 +229,39 @@ static ThemeProperties getThemeProperties(GtkWidget* w) {
     return props;
 }
 
+static auto getSystemThemeColors(GtkWidget* w, bool dark) -> std::pair<Color, Color> {
+    GtkStyleContext* ctx = gtk_widget_get_style_context(w);
+    GdkRGBA bgRgba{}, fgRgba{};
+
+    bool foundBg = gtk_style_context_lookup_color(ctx, "view_bg_color", &bgRgba) ||
+                   gtk_style_context_lookup_color(ctx, "theme_base_color", &bgRgba) ||
+                   gtk_style_context_lookup_color(ctx, "theme_bg_color", &bgRgba) ||
+                   gtk_style_context_lookup_color(ctx, "window_bg_color", &bgRgba);
+
+    bool foundFg = gtk_style_context_lookup_color(ctx, "view_fg_color", &fgRgba) ||
+                   gtk_style_context_lookup_color(ctx, "theme_text_color", &fgRgba) ||
+                   gtk_style_context_lookup_color(ctx, "theme_fg_color", &fgRgba) ||
+                   gtk_style_context_lookup_color(ctx, "window_fg_color", &fgRgba);
+
+    Color bg = foundBg ? Util::GdkRGBA_to_rgb(bgRgba) : (dark ? Color(0x1d, 0x1d, 0x20) : Color(0xff, 0xff, 0xff));
+    Color fg = foundFg ? Util::GdkRGBA_to_rgb(fgRgba) : (dark ? Color(0xff, 0xff, 0xff) : Color(0x00, 0x00, 0x00));
+
+    // Consistency check: ensure dark mode has dark bg / light fg, and light mode has light bg / dark fg
+    if (dark && bg.isLight()) {
+        bg = Color(0x1d, 0x1d, 0x20);
+    } else if (!dark && !bg.isLight()) {
+        bg = Color(0xff, 0xff, 0xff);
+    }
+
+    if (dark && !fg.isLight()) {
+        fg = Color(0xff, 0xff, 0xff);
+    } else if (!dark && fg.isLight()) {
+        fg = Color(0x00, 0x00, 0x00);
+    }
+
+    return {bg, fg};
+}
+
 void MainWindow::updateColorscheme() {
     g_signal_handlers_block_by_func(gtk_widget_get_settings(this->window),
                                     reinterpret_cast<gpointer>(G_CALLBACK(themeCallback)), this);
@@ -304,6 +338,71 @@ void MainWindow::updateColorscheme() {
     }
     g_signal_handlers_unblock_by_func(gtk_widget_get_settings(this->window), reinterpret_cast<gpointer>(themeCallback),
                                       this);
+    this->updateCanvasTheme();
+}
+
+void MainWindow::updateCanvasTheme() {
+    if (!this->control || !this->control->getSettings()) {
+        return;
+    }
+    Settings* settings = this->control->getSettings();
+    auto canvasMode = settings->getCanvasThemeMode();
+
+    if (canvasMode == CANVAS_THEME_DO_NOT_FOLLOW) {
+        settings->setActiveRecolorParameters(settings->getConfiguredRecolorParameters());
+    } else {
+        const auto& configured = settings->getConfiguredRecolorParameters();
+        RecolorParameters active{};
+
+        if (canvasMode == CANVAS_THEME_CUSTOM_COLORS) {
+            if (this->darkMode) {
+                active.recolorizeMainView = true;
+                active.recolorizeSidebarMiniatures = configured.recolorizeSidebarMiniatures;
+                active.recolor = configured.recolor;
+            } else {
+                active.recolorizeMainView = false;
+                active.recolorizeSidebarMiniatures = false;
+                active.recolor = configured.recolor;
+            }
+        } else if (canvasMode == CANVAS_THEME_FOLLOW_SYSTEM) {
+            auto [sysBg, sysFg] = getSystemThemeColors(this->window, this->darkMode);
+
+            if (this->darkMode) {
+                active.recolorizeMainView = true;
+                active.recolorizeSidebarMiniatures = configured.recolorizeSidebarMiniatures;
+                active.recolor = Recolor(sysBg, sysFg);
+            } else {
+                if (sysBg == Color(0xff, 0xff, 0xff) && sysFg == Color(0x00, 0x00, 0x00)) {
+                    active.recolorizeMainView = false;
+                    active.recolorizeSidebarMiniatures = false;
+                    active.recolor = Recolor(sysBg, sysFg);
+                } else {
+                    active.recolorizeMainView = true;
+                    active.recolorizeSidebarMiniatures = configured.recolorizeSidebarMiniatures;
+                    active.recolor = Recolor(sysBg, sysFg);
+                }
+            }
+        }
+
+        settings->setActiveRecolorParameters(active);
+    }
+
+    auto recolor = settings->getRecolorParameters().recolorizeMainView ?
+                           std::make_optional(settings->getRecolorParameters().recolor) :
+                           std::nullopt;
+
+    if (this->toolbar) {
+        this->toolbar->updateColorToolItemsRecoloring(recolor);
+    }
+    if (this->control && this->control->getCursor()) {
+        this->control->getCursor()->updateCursor();
+    }
+    if (this->control && this->control->getSidebar()) {
+        this->control->getSidebar()->queueDraw();
+    }
+    if (this->xournal && this->xournal->getWidget()) {
+        gtk_widget_queue_draw(this->xournal->getWidget());
+    }
 }
 
 void MainWindow::initXournalWidget() {

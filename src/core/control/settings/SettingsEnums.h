@@ -91,6 +91,12 @@ enum IconTheme {
 
 enum ThemeVariant { THEME_VARIANT_USE_SYSTEM, THEME_VARIANT_FORCE_LIGHT, THEME_VARIANT_FORCE_DARK };
 
+enum CanvasThemeMode {
+    CANVAS_THEME_FOLLOW_SYSTEM,
+    CANVAS_THEME_CUSTOM_COLORS,
+    CANVAS_THEME_DO_NOT_FOLLOW,
+};
+
 /**
  * The user-selectable Page Preview Decoration style
  */
@@ -191,6 +197,19 @@ constexpr auto themeVariantToString(ThemeVariant variant) -> const char* {
     }
 }
 
+constexpr auto canvasThemeModeToString(CanvasThemeMode mode) -> const char* {
+    switch (mode) {
+        case CANVAS_THEME_FOLLOW_SYSTEM:
+            return "followSystem";
+        case CANVAS_THEME_CUSTOM_COLORS:
+            return "customColors";
+        case CANVAS_THEME_DO_NOT_FOLLOW:
+            return "doNotFollow";
+        default:
+            return "unknown";
+    }
+}
+
 constexpr auto emptyLastPageAppendToString(EmptyLastPageAppendType appendType) -> const char* {
     switch (appendType) {
         case EmptyLastPageAppendType::Disabled:
@@ -208,4 +227,5 @@ StylusCursorType stylusCursorTypeFromString(const std::string& stylusCursorTypeS
 EraserVisibility eraserVisibilityFromString(const std::string& eraserVisibilityStr);
 IconTheme iconThemeFromString(const std::string& iconThemeStr);
 ThemeVariant themeVariantFromString(const std::string& themeVariantStr);
+CanvasThemeMode canvasThemeModeFromString(const std::string& canvasThemeModeStr);
 EmptyLastPageAppendType emptyLastPageAppendFromString(const std::string& str);

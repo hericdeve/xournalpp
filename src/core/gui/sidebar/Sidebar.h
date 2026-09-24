@@ -58,6 +58,15 @@ public:
     void saveSize();
 
     /**
+     * Request redraw of the sidebar contents
+     */
+    void queueDraw() {
+        if (this->sidebarContents) {
+            gtk_widget_queue_draw(this->sidebarContents);
+        }
+    }
+
+    /**
      * Get how many pages are contained in this sidebar
      *
      * Todo: it makes no sense to expose this, as the caller has no way of knowing what those pages correspond to

@@ -1382,6 +1382,7 @@ void Control::showSettings() {
         bool highlightPosition;
         SidebarNumberingStyle sidebarStyle;
         std::optional<std::filesystem::path> colorPaletteSetting;
+        CanvasThemeMode canvasThemeMode;
         RecolorParameters recolorParameters;
     } settingsBeforeDialog = {
             settings->getBorderColor(),
@@ -1396,6 +1397,7 @@ void Control::showSettings() {
             settings->isHighlightPosition(),
             settings->getSidebarNumberingStyle(),
             settings->getColorPaletteSetting(),
+            settings->getCanvasThemeMode(),
             settings->getRecolorParameters(),
     };
 
@@ -1467,7 +1469,10 @@ void Control::showSettings() {
                     reloadToolbars = true;
                 }
 
-                if (settingsBeforeDialog.recolorParameters != settings->getRecolorParameters()) {
+                ctrl->win->updateColorscheme();
+
+                if (settingsBeforeDialog.recolorParameters != settings->getRecolorParameters() ||
+                    settingsBeforeDialog.canvasThemeMode != settings->getCanvasThemeMode()) {
                     ctrl->getWindow()->getToolMenuHandler()->updateColorToolItemsRecoloring(
                             settings->getRecolorParameters().recolorizeMainView ?
                                     std::make_optional(settings->getRecolorParameters().recolor) :
@@ -1494,7 +1499,6 @@ void Control::showSettings() {
                 }
 
                 xournal->getHandRecognition()->reload();
-                ctrl->win->updateColorscheme();
 
                 ctrl->getActionDatabase()->setActionState(Action::TOGGLE_TOUCH_DRAWING,
                                                           settings->getTouchDrawingEnabled());

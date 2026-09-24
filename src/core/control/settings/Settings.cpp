@@ -113,6 +113,7 @@ void Settings::loadDefault() {
     this->eraserVisibility = ERASER_VISIBILITY_ALWAYS;
     this->iconTheme = ICON_THEME_COLOR;
     this->themeVariant = THEME_VARIANT_USE_SYSTEM;
+    this->canvasThemeMode = CANVAS_THEME_DO_NOT_FOLLOW;
     this->highlightPosition = false;
     this->cursorHighlightColor = 0x80FFFF00;  // Yellow with 50% opacity
     this->cursorHighlightRadius = 30.0;
@@ -204,6 +205,7 @@ void Settings::loadDefault() {
     this->activeSelectionColor = Colors::lawngreen;
 
     this->recolorParameters = {false, false, Recolor(ColorU8{198, 208, 245}, ColorU8{48, 52, 70})};
+    this->activeRecolorParameters = this->recolorParameters;
 
     this->backgroundColor = Colors::xopp_gainsboro02;
 
@@ -496,6 +498,8 @@ void Settings::parseItem(xmlDocPtr doc, xmlNodePtr cur) {
         this->iconTheme = iconThemeFromString(reinterpret_cast<const char*>(value));
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("themeVariant")) == 0) {
         this->themeVariant = themeVariantFromString(reinterpret_cast<const char*>(value));
+    } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("canvasThemeMode")) == 0) {
+        this->canvasThemeMode = canvasThemeModeFromString(reinterpret_cast<const char*>(value));
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("highlightPosition")) == 0) {
         this->highlightPosition = xmlStrcmp(value, reinterpret_cast<const xmlChar*>("true")) == 0;
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("cursorHighlightColor")) == 0) {
@@ -1080,6 +1084,9 @@ void Settings::save() {
 
     xmlNode = saveProperty("themeVariant", themeVariantToString(this->themeVariant), root);
     ATTACH_COMMENT("Dark/light mode, allowed values are \"useSystem\", \"forceLight\", \"forceDark\"");
+
+    xmlNode = saveProperty("canvasThemeMode", canvasThemeModeToString(this->canvasThemeMode), root);
+    ATTACH_COMMENT("Canvas theme mode, allowed values are \"followSystem\", \"customColors\", \"doNotFollow\"");
 
     SAVE_BOOL_PROP(highlightPosition);
     xmlNode = savePropertyUnsigned("cursorHighlightColor", uint32_t(cursorHighlightColor), root);
@@ -2212,13 +2219,39 @@ void Settings::setActiveSelectionColor(Color color) {
     save();
 }
 
-auto Settings::getRecolorParameters() const -> const RecolorParameters& { return this->recolorParameters; }
+auto Settings::getRecolorParameters() const -> const RecolorParameters& {
+    if (this->canvasThemeMode == CANVAS_THEME_DO_NOT_FOLLOW) {
+        return this->recolorParameters;
+    }
+    return this->activeRecolorParameters;
+}
+
+auto Settings::getConfiguredRecolorParameters() const -> const RecolorParameters& {
+    return this->recolorParameters;
+}
 
 void Settings::setRecolorParameters(RecolorParameters&& recolor) {
     if (this->recolorParameters == recolor) {
         return;
     }
-    this->recolorParameters = recolor;
+    this->recolorParameters = std::move(recolor);
+    if (this->canvasThemeMode == CANVAS_THEME_DO_NOT_FOLLOW) {
+        this->activeRecolorParameters = this->recolorParameters;
+    }
+    save();
+}
+
+void Settings::setActiveRecolorParameters(const RecolorParameters& recolor) {
+    this->activeRecolorParameters = recolor;
+}
+
+auto Settings::getCanvasThemeMode() const -> CanvasThemeMode { return this->canvasThemeMode; }
+
+void Settings::setCanvasThemeMode(CanvasThemeMode mode) {
+    if (this->canvasThemeMode == mode) {
+        return;
+    }
+    this->canvasThemeMode = mode;
     save();
 }
 

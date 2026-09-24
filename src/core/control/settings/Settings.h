@@ -399,7 +399,12 @@ public:
     void setActiveSelectionColor(Color color);
 
     const RecolorParameters& getRecolorParameters() const;
+    const RecolorParameters& getConfiguredRecolorParameters() const;
     void setRecolorParameters(RecolorParameters&& recolorParameters);
+    void setActiveRecolorParameters(const RecolorParameters& activeRecolorParameters);
+
+    CanvasThemeMode getCanvasThemeMode() const;
+    void setCanvasThemeMode(CanvasThemeMode mode);
 
     // Re-render pages if document zoom differs from the last render zoom by the given threshold.
     double getPDFPageRerenderThreshold() const;
@@ -696,6 +701,11 @@ private:
      * Follow system's default theme variant or force one or the other
      */
     ThemeVariant themeVariant;
+
+    /**
+     * How the canvas theme should follow the system / application theme
+     */
+    CanvasThemeMode canvasThemeMode = CANVAS_THEME_DO_NOT_FOLLOW;
 
     /**
      * Sidebar page number style
@@ -1033,6 +1043,11 @@ private:
      * Also contains fields whether it is active at all
      */
     RecolorParameters recolorParameters{};
+
+    /**
+     * The active runtime recoloring parameters (derived from theme follow mode)
+     */
+    RecolorParameters activeRecolorParameters{};
 
     /**
      * Page template (format, background, color...)

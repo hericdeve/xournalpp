@@ -61,6 +61,20 @@ auto themeVariantFromString(const std::string& themeVariantStr) -> ThemeVariant 
     return THEME_VARIANT_USE_SYSTEM;
 }
 
+auto canvasThemeModeFromString(const std::string& canvasThemeModeStr) -> CanvasThemeMode {
+    if (canvasThemeModeStr == "followSystem") {
+        return CANVAS_THEME_FOLLOW_SYSTEM;
+    }
+    if (canvasThemeModeStr == "customColors") {
+        return CANVAS_THEME_CUSTOM_COLORS;
+    }
+    if (canvasThemeModeStr == "doNotFollow") {
+        return CANVAS_THEME_DO_NOT_FOLLOW;
+    }
+    g_warning("Settings::Unknown canvas theme mode: %s\n", canvasThemeModeStr.c_str());
+    return CANVAS_THEME_DO_NOT_FOLLOW;
+}
+
 auto emptyLastPageAppendFromString(const std::string& str) -> EmptyLastPageAppendType {
     if (str == "disabled") {
         return EmptyLastPageAppendType::Disabled;

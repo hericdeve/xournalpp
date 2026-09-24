@@ -166,6 +166,9 @@ SettingsDialog::SettingsDialog(GladeSearchpath* gladeSearchPath, Settings* setti
     g_signal_connect_swapped(builder.get("cbStylusCursorType"), "changed",
                              G_CALLBACK(+[](SettingsDialog* self) { self->customStylusIconTypeChanged(); }), this);
 
+    g_signal_connect_swapped(builder.get("cbCanvasThemeMode"), "changed",
+                             G_CALLBACK(+[](SettingsDialog* self) { self->updateCanvasThemeOptions(); }), this);
+
     g_signal_connect(GTK_COMBO_BOX(builder.get("cbStabilizerAveragingMethods")), "changed",
                      G_CALLBACK(+[](GtkComboBox* comboBox, gpointer self) {
                          static_cast<SettingsDialog*>(self)->showStabilizerAvMethodOptions(
@@ -296,6 +299,32 @@ void SettingsDialog::customStylusIconTypeChanged() {
     bool showCursorHighlightOptions =
             (stylusCursorType != STYLUS_CURSOR_NONE && stylusCursorType != STYLUS_CURSOR_ARROW);
     gtk_widget_set_sensitive(builder.get("highlightCursorGrid"), showCursorHighlightOptions);
+}
+
+void SettingsDialog::updateCanvasThemeOptions() {
+    int mode = gtk_combo_box_get_active(GTK_COMBO_BOX(builder.get("cbCanvasThemeMode")));
+    bool isDoNotFollow = (mode == 2);
+    bool isCustomColors = (mode == 1);
+
+    gtk_widget_set_sensitive(builder.get("cbRecolorDrawingArea"), isDoNotFollow);
+    gtk_widget_set_sensitive(builder.get("recolorLight"), isDoNotFollow || isCustomColors);
+    gtk_widget_set_sensitive(builder.get("recolorDark"), isDoNotFollow || isCustomColors);
+    gtk_widget_set_sensitive(builder.get("lbRecolorLight"), isDoNotFollow || isCustomColors);
+    gtk_widget_set_sensitive(builder.get("lbRecolorDark"), isDoNotFollow || isCustomColors);
+
+    if (mode == 0) {
+        gtk_widget_set_tooltip_text(builder.get("cbRecolorDrawingArea"),
+                                    _("Canvas theme automatically follows the system theme completely."));
+    } else if (mode == 1) {
+        gtk_widget_set_tooltip_text(
+                builder.get("cbRecolorDrawingArea"),
+                _("Canvas theme automatically alternates between light and dark using custom colors."));
+    } else {
+        gtk_widget_set_tooltip_text(
+                builder.get("cbRecolorDrawingArea"),
+                _("Recolors the drawing area so that light regions get the \"Light Color\" and dark regions get the "
+                  "\"Dark Color\". Other colors are interpolated accordingly. Can be use to implement a dark-mode."));
+    }
 }
 
 void SettingsDialog::showStabilizerAvMethodOptions(StrokeStabilizer::AveragingMethod method) {
@@ -527,7 +556,7 @@ void SettingsDialog::load() {
     gtk_color_chooser_set_rgba(GTK_COLOR_CHOOSER(builder.get("colorSelectionActive")), &color);
 
     {
-        const auto& recolor = settings->getRecolorParameters();
+        const auto& recolor = settings->getConfiguredRecolorParameters();
         loadCheckbox("cbRecolorDrawingArea", recolor.recolorizeMainView);
         loadCheckbox("cbRecolorPreviewSidebar", recolor.recolorizeSidebarMiniatures);
         color = Util::argb_to_GdkRGBA(recolor.recolor.getLight());
@@ -600,6 +629,20 @@ void SettingsDialog::load() {
             gtk_combo_box_set_active(GTK_COMBO_BOX(builder.get("cbThemeVariant")), 0);
             break;
     }
+
+    switch (settings->getCanvasThemeMode()) {
+        case CANVAS_THEME_FOLLOW_SYSTEM:
+            gtk_combo_box_set_active(GTK_COMBO_BOX(builder.get("cbCanvasThemeMode")), 0);
+            break;
+        case CANVAS_THEME_CUSTOM_COLORS:
+            gtk_combo_box_set_active(GTK_COMBO_BOX(builder.get("cbCanvasThemeMode")), 1);
+            break;
+        case CANVAS_THEME_DO_NOT_FOLLOW:
+        default:
+            gtk_combo_box_set_active(GTK_COMBO_BOX(builder.get("cbCanvasThemeMode")), 2);
+            break;
+    }
+    updateCanvasThemeOptions();
 
     auto viewMode = settings->getViewModes().at(PresetViewModeIds::VIEW_MODE_FULLSCREEN);
     bool showFullscreenMenubar = viewMode.showMenubar;
@@ -889,6 +932,19 @@ void SettingsDialog::save() {
         case 0:
         default:
             settings->setThemeVariant(THEME_VARIANT_USE_SYSTEM);
+            break;
+    }
+
+    switch (gtk_combo_box_get_active(GTK_COMBO_BOX(builder.get("cbCanvasThemeMode")))) {
+        case 0:
+            settings->setCanvasThemeMode(CANVAS_THEME_FOLLOW_SYSTEM);
+            break;
+        case 1:
+            settings->setCanvasThemeMode(CANVAS_THEME_CUSTOM_COLORS);
+            break;
+        case 2:
+        default:
+            settings->setCanvasThemeMode(CANVAS_THEME_DO_NOT_FOLLOW);
             break;
     }
 

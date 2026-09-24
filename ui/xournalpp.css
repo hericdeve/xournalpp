@@ -191,3 +191,21 @@ image.flying-icon.TL {
 image.flying-icon.TR {
     border-radius: 50% 50% 50% 0%;
 }
+
+/*
+ * Ensure button text in message dialogs is readable.
+ * Some GTK themes (such as adw-gtk3) hardcode dark text on messagedialog buttons,
+ * which becomes unreadable on dark backgrounds / dark color schemes.
+ */
+messagedialog button:not(.suggested-action):not(.destructive-action) {
+    color: inherit;
+}
+
+messagedialog button:not(.suggested-action):not(.destructive-action):disabled {
+    color: alpha(currentColor, 0.5);
+}
+
+messagedialog button:not(.suggested-action):not(.destructive-action):backdrop {
+    color: alpha(currentColor, 0.7);
+}
+

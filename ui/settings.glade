@@ -3319,106 +3319,166 @@ This setting can make it easier to draw with touch.</property>
                               </packing>
                             </child>
                             <child>
-                              <object class="GtkFrame">
+                              <object class="GtkFrame" id="frameCanvasTheme">
                                 <property name="visible">True</property>
                                 <property name="can-focus">False</property>
                                 <property name="label-xalign">0.009999999776482582</property>
                                 <child>
-                                  <!-- n-columns=3 n-rows=2 -->
-                                  <object class="GtkGrid">
+                                  <object class="GtkBox">
                                     <property name="visible">True</property>
                                     <property name="can-focus">False</property>
-                                    <property name="halign">start</property>
+                                    <property name="orientation">vertical</property>
+                                    <property name="spacing">6</property>
                                     <property name="margin-start">12</property>
                                     <property name="margin-end">12</property>
+                                    <property name="margin-top">6</property>
                                     <property name="margin-bottom">8</property>
-                                    <property name="row-homogeneous">True</property>
                                     <child>
-                                      <object class="GtkCheckButton" id="cbRecolorDrawingArea">
-                                        <property name="label" translatable="yes">Recolor Drawing Area (might introduce lags when moving selections)</property>
-                                        <property name="name">cbRecolorDrawingArea</property>
+                                      <object class="GtkBox">
                                         <property name="visible">True</property>
-                                        <property name="can-focus">True</property>
-                                        <property name="receives-default">False</property>
-                                        <property name="tooltip-text" translatable="yes">Recolors the drawing area so that light regions get the "Light Color" and dark regions get the "Dark Color". Other colors are interpolated accordingly. Can be use to implement a dark-mode.</property>
-                                        <property name="draw-indicator">True</property>
+                                        <property name="can-focus">False</property>
+                                        <child>
+                                          <object class="GtkLabel">
+                                            <property name="visible">True</property>
+                                            <property name="can-focus">False</property>
+                                            <property name="label" translatable="yes">Canvas Theme Mode:</property>
+                                            <property name="xalign">0</property>
+                                          </object>
+                                          <packing>
+                                            <property name="expand">False</property>
+                                            <property name="fill">True</property>
+                                            <property name="position">0</property>
+                                          </packing>
+                                        </child>
+                                        <child>
+                                          <object class="GtkComboBoxText" id="cbCanvasThemeMode">
+                                            <property name="name">cbCanvasThemeMode</property>
+                                            <property name="visible">True</property>
+                                            <property name="can-focus">False</property>
+                                            <property name="margin-left">6</property>
+                                            <property name="margin-right">6</property>
+                                            <property name="margin-start">6</property>
+                                            <property name="margin-end">6</property>
+                                            <property name="active">0</property>
+                                            <items>
+                                              <item id="canvasThemeFollowSystem" translatable="yes">Follow system theme completely</item>
+                                              <item id="canvasThemeCustomColors" translatable="yes">Follow theme using custom colors</item>
+                                              <item id="canvasThemeDoNotFollow" translatable="yes">Do not follow theme</item>
+                                            </items>
+                                          </object>
+                                          <packing>
+                                            <property name="expand">False</property>
+                                            <property name="fill">True</property>
+                                            <property name="position">1</property>
+                                          </packing>
+                                        </child>
                                       </object>
                                       <packing>
-                                        <property name="left-attach">0</property>
-                                        <property name="top-attach">0</property>
+                                        <property name="expand">False</property>
+                                        <property name="fill">True</property>
+                                        <property name="position">0</property>
                                       </packing>
                                     </child>
                                     <child>
-                                      <object class="GtkCheckButton" id="cbRecolorPreviewSidebar">
-                                        <property name="label" translatable="yes">Recolor Previews in the Sidebar</property>
-                                        <property name="name">cbRecolorPreviewSidebar</property>
+                                      <!-- n-columns=3 n-rows=2 -->
+                                      <object class="GtkGrid">
                                         <property name="visible">True</property>
-                                        <property name="can-focus">True</property>
-                                        <property name="receives-default">False</property>
-                                        <property name="tooltip-text" translatable="yes">Recolors the previews in the sidebar (Page/Layer Preview) the same way as the drawing area.</property>
-                                        <property name="draw-indicator">True</property>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">0</property>
-                                        <property name="top-attach">1</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkColorButton" id="recolorLight">
-                                        <property name="name">recolorLight</property>
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">True</property>
-                                        <property name="receives-default">True</property>
-                                        <property name="tooltip-text" translatable="yes">The color light regions are translated to
+                                        <property name="can-focus">False</property>
+                                        <property name="halign">start</property>
+                                        <property name="row-homogeneous">True</property>
+                                        <child>
+                                          <object class="GtkCheckButton" id="cbRecolorDrawingArea">
+                                            <property name="label" translatable="yes">Recolor Drawing Area (might introduce lags when moving selections)</property>
+                                            <property name="name">cbRecolorDrawingArea</property>
+                                            <property name="visible">True</property>
+                                            <property name="can-focus">True</property>
+                                            <property name="receives-default">False</property>
+                                            <property name="tooltip-text" translatable="yes">Recolors the drawing area so that light regions get the "Light Color" and dark regions get the "Dark Color". Other colors are interpolated accordingly. Can be use to implement a dark-mode.</property>
+                                            <property name="draw-indicator">True</property>
+                                          </object>
+                                          <packing>
+                                            <property name="left-attach">0</property>
+                                            <property name="top-attach">0</property>
+                                          </packing>
+                                        </child>
+                                        <child>
+                                          <object class="GtkCheckButton" id="cbRecolorPreviewSidebar">
+                                            <property name="label" translatable="yes">Recolor Previews in the Sidebar</property>
+                                            <property name="name">cbRecolorPreviewSidebar</property>
+                                            <property name="visible">True</property>
+                                            <property name="can-focus">True</property>
+                                            <property name="receives-default">False</property>
+                                            <property name="tooltip-text" translatable="yes">Recolors the previews in the sidebar (Page/Layer Preview) the same way as the drawing area.</property>
+                                            <property name="draw-indicator">True</property>
+                                          </object>
+                                          <packing>
+                                            <property name="left-attach">0</property>
+                                            <property name="top-attach">1</property>
+                                          </packing>
+                                        </child>
+                                        <child>
+                                          <object class="GtkColorButton" id="recolorLight">
+                                            <property name="name">recolorLight</property>
+                                            <property name="visible">True</property>
+                                            <property name="can-focus">True</property>
+                                            <property name="receives-default">True</property>
+                                            <property name="tooltip-text" translatable="yes">The color light regions are translated to
 (use a dark color for a dark-mode)</property>
-                                        <property name="halign">start</property>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">2</property>
-                                        <property name="top-attach">0</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkColorButton" id="recolorDark">
-                                        <property name="name">recolorDark</property>
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">True</property>
-                                        <property name="receives-default">True</property>
-                                        <property name="tooltip-text" translatable="yes">The color dark regions are translated to
+                                            <property name="halign">start</property>
+                                          </object>
+                                          <packing>
+                                            <property name="left-attach">2</property>
+                                            <property name="top-attach">0</property>
+                                          </packing>
+                                        </child>
+                                        <child>
+                                          <object class="GtkColorButton" id="recolorDark">
+                                            <property name="name">recolorDark</property>
+                                            <property name="visible">True</property>
+                                            <property name="can-focus">True</property>
+                                            <property name="receives-default">True</property>
+                                            <property name="tooltip-text" translatable="yes">The color dark regions are translated to
 (use a light color for dark-mode)</property>
-                                        <property name="halign">start</property>
+                                            <property name="halign">start</property>
+                                          </object>
+                                          <packing>
+                                            <property name="left-attach">2</property>
+                                            <property name="top-attach">1</property>
+                                          </packing>
+                                        </child>
+                                        <child>
+                                          <object class="GtkLabel" id="lbRecolorDark">
+                                            <property name="visible">True</property>
+                                            <property name="can-focus">False</property>
+                                            <property name="halign">start</property>
+                                            <property name="margin-start">50</property>
+                                            <property name="margin-end">4</property>
+                                            <property name="label" translatable="yes">Dark Color</property>
+                                          </object>
+                                          <packing>
+                                            <property name="left-attach">1</property>
+                                            <property name="top-attach">1</property>
+                                          </packing>
+                                        </child>
+                                        <child>
+                                          <object class="GtkLabel" id="lbRecolorLight">
+                                            <property name="visible">True</property>
+                                            <property name="can-focus">False</property>
+                                            <property name="halign">start</property>
+                                            <property name="margin-start">50</property>
+                                            <property name="margin-end">4</property>
+                                            <property name="label" translatable="yes">Light Color</property>
+                                          </object>
+                                          <packing>
+                                            <property name="left-attach">1</property>
+                                            <property name="top-attach">0</property>
+                                          </packing>
+                                        </child>
                                       </object>
                                       <packing>
-                                        <property name="left-attach">2</property>
-                                        <property name="top-attach">1</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkLabel">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="halign">start</property>
-                                        <property name="margin-start">50</property>
-                                        <property name="margin-end">4</property>
-                                        <property name="label" translatable="yes">Dark Color</property>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">1</property>
-                                        <property name="top-attach">1</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkLabel">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="halign">start</property>
-                                        <property name="margin-start">50</property>
-                                        <property name="margin-end">4</property>
-                                        <property name="label" translatable="yes">Light Color</property>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">1</property>
-                                        <property name="top-attach">0</property>
+                                        <property name="expand">False</property>
+                                        <property name="fill">True</property>
+                                        <property name="position">1</property>
                                       </packing>
                                     </child>
                                   </object>
@@ -3427,7 +3487,7 @@ This setting can make it easier to draw with touch.</property>
                                   <object class="GtkLabel">
                                     <property name="visible">True</property>
                                     <property name="can-focus">False</property>
-                                    <property name="label" translatable="yes">Recoloring (allows theming)</property>
+                                    <property name="label" translatable="yes">Canvas Theme / Recoloring</property>
                                   </object>
                                 </child>
                               </object>

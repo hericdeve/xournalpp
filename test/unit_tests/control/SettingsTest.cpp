@@ -43,6 +43,7 @@ TEST(SettingsTest, testReadWrite) {
         settings.setBackgroundColor(Color(123, 45, 67));               // Color
         settings.setColorPaletteSetting("foo/bar€_palette");           // path
         settings.setEraserVisibility(ERASER_VISIBILITY_HOVER);         // enum
+        settings.setCanvasThemeMode(CANVAS_THEME_FOLLOW_SYSTEM);       // enum
         settings.setFont(XojFont{"myfontname italic 34"});             // Font
         settings.latexSettings.editorFont = XojFont{"myfonttest 52"};  // Font
         settings.setPreloadPagesAfter(145);                            // unsigned int
@@ -68,6 +69,8 @@ TEST(SettingsTest, testReadWrite) {
         EXPECT_EQ(settings.getLastOpenPath(), loaded.getLastOpenPath());                                    // path
         EXPECT_EQ(settings.getEraserVisibility(), loaded.getEraserVisibility());                            // enum
         EXPECT_EQ(settings.getActiveViewMode(), loaded.getActiveViewMode());                                // enum
+        EXPECT_EQ(settings.getCanvasThemeMode(), loaded.getCanvasThemeMode());                              // enum
+        EXPECT_EQ(loaded.getCanvasThemeMode(), CANVAS_THEME_FOLLOW_SYSTEM);                                  // enum
         EXPECT_EQ(settings.getFont().getName(), loaded.getFont().getName());                                // Font
         EXPECT_EQ(settings.getFont().getSize(), loaded.getFont().getSize());                                // Font
         EXPECT_EQ(settings.latexSettings.editorFont.getName(), loaded.latexSettings.editorFont.getName());  // Font
@@ -78,4 +81,15 @@ TEST(SettingsTest, testReadWrite) {
         fs::remove(outPath);
     };
     saveReloadTest(fs::temp_directory_path());
+}
+
+TEST(SettingsTest, testCanvasThemeModeSerialization) {
+    EXPECT_STREQ(canvasThemeModeToString(CANVAS_THEME_FOLLOW_SYSTEM), "followSystem");
+    EXPECT_STREQ(canvasThemeModeToString(CANVAS_THEME_CUSTOM_COLORS), "customColors");
+    EXPECT_STREQ(canvasThemeModeToString(CANVAS_THEME_DO_NOT_FOLLOW), "doNotFollow");
+
+    EXPECT_EQ(canvasThemeModeFromString("followSystem"), CANVAS_THEME_FOLLOW_SYSTEM);
+    EXPECT_EQ(canvasThemeModeFromString("customColors"), CANVAS_THEME_CUSTOM_COLORS);
+    EXPECT_EQ(canvasThemeModeFromString("doNotFollow"), CANVAS_THEME_DO_NOT_FOLLOW);
+    EXPECT_EQ(canvasThemeModeFromString("invalid"), CANVAS_THEME_DO_NOT_FOLLOW);
 }

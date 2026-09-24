@@ -59,6 +59,7 @@ private:
      */
     void customHandRecognitionToggled();
     void customStylusIconTypeChanged();
+    void updateCanvasThemeOptions();
 
     /**
      * Update whether options can be selected, tooltips, etc. for
