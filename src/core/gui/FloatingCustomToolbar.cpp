@@ -281,7 +281,9 @@ auto FloatingCustomToolbar::onDragMotion(GtkWidget* widget, GdkEventMotion* even
         settings->setFloatingToolbarY(newY);
 
         self->clampPosition();
-        gtk_widget_queue_resize(self->container.get());
+        if (self->overlay) {
+            gtk_widget_queue_allocate(GTK_WIDGET(self->overlay.get()));
+        }
         return TRUE;
     }
     return FALSE;
@@ -295,6 +297,9 @@ auto FloatingCustomToolbar::onDragButtonRelease(GtkWidget* widget, GdkEventButto
         GdkWindow* gdkWin = gtk_widget_get_window(widget);
         if (gdkWin) {
             gdk_window_set_cursor(gdkWin, nullptr);
+        }
+        if (self->overlay) {
+            gtk_widget_queue_allocate(GTK_WIDGET(self->overlay.get()));
         }
         return TRUE;
     }
