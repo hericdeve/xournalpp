@@ -27,43 +27,11 @@ FloatingCustomToolbar::FloatingCustomToolbar(MainWindow* win, GtkOverlay* overla
     GtkOrientation orient = horizontal ? GTK_ORIENTATION_HORIZONTAL : GTK_ORIENTATION_VERTICAL;
 
     // Root container box
-    GtkWidget* rootBox = gtk_box_new(orient, 2);
+    GtkWidget* rootBox = gtk_box_new(orient, 0);
     this->container.reset(rootBox, xoj::util::adopt);
     gtk_widget_set_name(rootBox, "floatingToolbarContainer");
     gtk_widget_add_css_class(rootBox, "osd");
     gtk_widget_add_css_class(rootBox, "floating-toolbar");
-
-    // Handle box (contains drag grip, orientation toggle button, close button)
-    // If toolbar is vertical, handle box is horizontal on top.
-    // If toolbar is horizontal, handle box is vertical on left.
-    GtkOrientation handleOrient = (orient == GTK_ORIENTATION_HORIZONTAL) ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL;
-    this->handleBox = gtk_box_new(handleOrient, 2);
-    gtk_widget_set_name(this->handleBox, "floatingToolbarHandle");
-    gtk_box_pack_start(GTK_BOX(rootBox), this->handleBox, FALSE, FALSE, 0);
-
-    // Drag handle event box
-    GtkWidget* dragEventBox = gtk_event_box_new();
-    gtk_widget_set_name(dragEventBox, "floatingToolbarDragHandle");
-    gtk_event_box_set_visible_window(GTK_EVENT_BOX(dragEventBox), FALSE);
-    gtk_widget_add_events(dragEventBox, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK |
-                                        GDK_BUTTON1_MOTION_MASK | GDK_POINTER_MOTION_MASK);
-
-    this->dragGrip = gtk_image_new_from_icon_name("view-grid-symbolic", GTK_ICON_SIZE_MENU);
-    gtk_container_add(GTK_CONTAINER(dragEventBox), this->dragGrip);
-    gtk_widget_set_tooltip_text(dragEventBox, "Drag to move floating toolbar");
-    gtk_box_pack_start(GTK_BOX(this->handleBox), dragEventBox, TRUE, TRUE, 0);
-
-    // Orientation toggle button
-    this->toggleOrientationBtn = gtk_button_new_from_icon_name("object-rotate-right-symbolic", GTK_ICON_SIZE_MENU);
-    gtk_button_set_relief(GTK_BUTTON(this->toggleOrientationBtn), GTK_RELIEF_NONE);
-    gtk_widget_set_tooltip_text(this->toggleOrientationBtn, "Toggle horizontal / vertical orientation");
-    gtk_box_pack_start(GTK_BOX(this->handleBox), this->toggleOrientationBtn, FALSE, FALSE, 0);
-
-    // Close button
-    this->closeBtn = gtk_button_new_from_icon_name("window-close-symbolic", GTK_ICON_SIZE_MENU);
-    gtk_button_set_relief(GTK_BUTTON(this->closeBtn), GTK_RELIEF_NONE);
-    gtk_widget_set_tooltip_text(this->closeBtn, "Hide floating toolbar");
-    gtk_box_pack_start(GTK_BOX(this->handleBox), this->closeBtn, FALSE, FALSE, 0);
 
     // Inner GtkToolbar
     this->toolbar = gtk_toolbar_new();
@@ -76,21 +44,41 @@ FloatingCustomToolbar::FloatingCustomToolbar(MainWindow* win, GtkOverlay* overla
     gtk_overlay_add_overlay(overlay, rootBox);
     gtk_overlay_set_overlay_pass_through(overlay, rootBox, false);
 
-    // Signals
+    // Signals for positioning
     this->childPositionSignalId = g_signal_connect(
             overlay, "get-child-position", xoj::util::wrap_for_g_callback_v<getOverlayPosition>, this);
 
-    g_signal_connect(dragEventBox, "button-press-event",
-                     xoj::util::wrap_for_g_callback_v<onDragButtonPress>, this);
-    g_signal_connect(dragEventBox, "motion-notify-event",
-                     xoj::util::wrap_for_g_callback_v<onDragMotion>, this);
-    g_signal_connect(dragEventBox, "button-release-event",
-                     xoj::util::wrap_for_g_callback_v<onDragButtonRelease>, this);
+    // Event masks for non-button drag and cursor interaction
+    gtk_widget_add_events(rootBox, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK |
+                                   GDK_BUTTON1_MOTION_MASK | GDK_POINTER_MOTION_MASK |
+                                   GDK_LEAVE_NOTIFY_MASK);
+    gtk_widget_add_events(this->toolbar, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK |
+                                         GDK_BUTTON1_MOTION_MASK | GDK_POINTER_MOTION_MASK |
+                                         GDK_LEAVE_NOTIFY_MASK);
 
-    g_signal_connect(this->toggleOrientationBtn, "clicked",
-                     xoj::util::wrap_for_g_callback_v<onOrientationToggleClicked>, this);
-    g_signal_connect(this->closeBtn, "clicked",
-                     xoj::util::wrap_for_g_callback_v<onCloseClicked>, this);
+    g_signal_connect(rootBox, "button-press-event",
+                     xoj::util::wrap_for_g_callback_v<onDragButtonPress>, this);
+    g_signal_connect(rootBox, "motion-notify-event",
+                     xoj::util::wrap_for_g_callback_v<onDragMotion>, this);
+    g_signal_connect(rootBox, "button-release-event",
+                     xoj::util::wrap_for_g_callback_v<onDragButtonRelease>, this);
+    g_signal_connect(rootBox, "leave-notify-event",
+                     xoj::util::wrap_for_g_callback_v<onDragLeave>, this);
+
+    g_signal_connect(this->toolbar, "button-press-event",
+                     xoj::util::wrap_for_g_callback_v<onDragButtonPress>, this);
+    g_signal_connect(this->toolbar, "motion-notify-event",
+                     xoj::util::wrap_for_g_callback_v<onDragMotion>, this);
+    g_signal_connect(this->toolbar, "button-release-event",
+                     xoj::util::wrap_for_g_callback_v<onDragButtonRelease>, this);
+    g_signal_connect(this->toolbar, "leave-notify-event",
+                     xoj::util::wrap_for_g_callback_v<onDragLeave>, this);
+
+    // Keep child tool items hooked with drag event handlers as items are added/allocated
+    g_signal_connect_swapped(this->toolbar, "size-allocate",
+                             G_CALLBACK(+[](FloatingCustomToolbar* self) {
+                                 self->updateToolItemDragHandlers();
+                             }), this);
 
     gtk_widget_show_all(rootBox);
     setVisible(settings->isFloatingToolbarVisible());
@@ -118,6 +106,7 @@ void FloatingCustomToolbar::setVisible(bool visible) {
     if (!this->container) {
         return;
     }
+
     if (this->inConfiguration) {
         gtk_widget_show(this->container.get());
         gtk_widget_show(this->toolbar);
@@ -125,7 +114,6 @@ void FloatingCustomToolbar::setVisible(bool visible) {
     }
 
     if (visible) {
-        // Show if there are items or visible
         gtk_widget_show(this->container.get());
         gtk_widget_show(this->toolbar);
         clampPosition();
@@ -147,9 +135,6 @@ void FloatingCustomToolbar::setOrientation(GtkOrientation orientation) {
     gtk_orientable_set_orientation(GTK_ORIENTABLE(this->container.get()), orientation);
     gtk_orientable_set_orientation(GTK_ORIENTABLE(this->toolbar), orientation);
 
-    GtkOrientation handleOrient = horizontal ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL;
-    gtk_orientable_set_orientation(GTK_ORIENTABLE(this->handleBox), handleOrient);
-
     if (!this->inConfiguration && mainWindow->getSelectedToolbar()) {
         mainWindow->reloadToolbars();
     }
@@ -160,11 +145,6 @@ void FloatingCustomToolbar::setOrientation(GtkOrientation orientation) {
 
 GtkOrientation FloatingCustomToolbar::getOrientation() const {
     return gtk_orientable_get_orientation(GTK_ORIENTABLE(this->toolbar));
-}
-
-void FloatingCustomToolbar::toggleOrientation() {
-    GtkOrientation current = getOrientation();
-    setOrientation(current == GTK_ORIENTATION_HORIZONTAL ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL);
 }
 
 void FloatingCustomToolbar::showForConfiguration() {
@@ -179,6 +159,35 @@ void FloatingCustomToolbar::endConfiguration() {
     this->inConfiguration = false;
     Settings* settings = mainWindow->getControl()->getSettings();
     setVisible(settings->isFloatingToolbarVisible());
+}
+
+void FloatingCustomToolbar::connectItemDragHandlers(GtkWidget* item) {
+    if (!item || g_object_get_data(G_OBJECT(item), "xopp_floating_drag_connected")) {
+        return;
+    }
+    g_object_set_data(G_OBJECT(item), "xopp_floating_drag_connected", GINT_TO_POINTER(1));
+
+    gtk_widget_add_events(item, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK |
+                                 GDK_BUTTON1_MOTION_MASK | GDK_POINTER_MOTION_MASK |
+                                 GDK_LEAVE_NOTIFY_MASK);
+
+    g_signal_connect(item, "button-press-event",
+                     xoj::util::wrap_for_g_callback_v<onDragButtonPress>, this);
+    g_signal_connect(item, "motion-notify-event",
+                     xoj::util::wrap_for_g_callback_v<onDragMotion>, this);
+    g_signal_connect(item, "button-release-event",
+                     xoj::util::wrap_for_g_callback_v<onDragButtonRelease>, this);
+    g_signal_connect(item, "leave-notify-event",
+                     xoj::util::wrap_for_g_callback_v<onDragLeave>, this);
+}
+
+void FloatingCustomToolbar::updateToolItemDragHandlers() {
+    if (!this->toolbar || !GTK_IS_CONTAINER(this->toolbar)) {
+        return;
+    }
+    gtk_container_foreach(GTK_CONTAINER(this->toolbar), [](GtkWidget* child, gpointer data) {
+        static_cast<FloatingCustomToolbar*>(data)->connectItemDragHandlers(child);
+    }, this);
 }
 
 void FloatingCustomToolbar::clampPosition() {
@@ -240,31 +249,91 @@ auto FloatingCustomToolbar::getOverlayPosition(GtkOverlay* overlay, GtkWidget* w
     return true;
 }
 
-auto FloatingCustomToolbar::onDragButtonPress(GtkWidget* widget, GdkEventButton* event,
-                                              FloatingCustomToolbar* self) -> gboolean {
-    if (event->button == GDK_BUTTON_PRIMARY) {
-        self->isDragging = true;
-        self->dragStartX = event->x_root;
-        self->dragStartY = event->y_root;
+auto FloatingCustomToolbar::findLeafWidgetAt(GtkWidget* root, GtkWidget* widget, int rootX, int rootY) -> GtkWidget* {
+    if (!widget || !gtk_widget_get_visible(widget) || !gtk_widget_get_mapped(widget)) {
+        return nullptr;
+    }
 
-        Settings* settings = self->mainWindow->getControl()->getSettings();
-        self->initialPosX = settings->getFloatingToolbarX();
-        self->initialPosY = settings->getFloatingToolbarY();
+    int widgetX = 0;
+    int widgetY = 0;
+    if (!gtk_widget_translate_coordinates(root, widget, rootX, rootY, &widgetX, &widgetY)) {
+        return nullptr;
+    }
 
-        GdkWindow* gdkWin = gtk_widget_get_window(widget);
-        if (gdkWin) {
-            GdkDisplay* display = gdk_window_get_display(gdkWin);
-            GdkCursor* cursor = gdk_cursor_new_from_name(display, "grabbing");
-            gdk_window_set_cursor(gdkWin, cursor);
-            if (cursor) {
-                g_object_unref(cursor);
+    GtkAllocation alloc;
+    gtk_widget_get_allocation(widget, &alloc);
+    if (widgetX < 0 || widgetX >= alloc.width || widgetY < 0 || widgetY >= alloc.height) {
+        return nullptr;
+    }
+
+    if (GTK_IS_CONTAINER(widget)) {
+        GList* children = gtk_container_get_children(GTK_CONTAINER(widget));
+        GtkWidget* deepestChild = nullptr;
+        for (GList* l = g_list_last(children); l != nullptr; l = l->prev) {
+            GtkWidget* child = GTK_WIDGET(l->data);
+            deepestChild = findLeafWidgetAt(root, child, rootX, rootY);
+            if (deepestChild) {
+                break;
             }
         }
-        return TRUE;
-    } else if (event->button == GDK_BUTTON_SECONDARY) {
-        return onPopupMenu(widget, event, self);
+        g_list_free(children);
+
+        if (deepestChild) {
+            return deepestChild;
+        }
     }
-    return FALSE;
+
+    return widget;
+}
+
+auto FloatingCustomToolbar::isInteractiveControl(GtkWidget* leaf, GtkWidget* topContainer) -> bool {
+    for (GtkWidget* curr = leaf; curr != nullptr && curr != topContainer; curr = gtk_widget_get_parent(curr)) {
+        if (GTK_IS_BUTTON(curr) || GTK_IS_SCALE(curr) || GTK_IS_SPIN_BUTTON(curr) ||
+            GTK_IS_COMBO_BOX(curr) || GTK_IS_ENTRY(curr) || GTK_IS_MENU_BUTTON(curr) ||
+            GTK_IS_SWITCH(curr) || GTK_IS_COLOR_CHOOSER(curr)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+auto FloatingCustomToolbar::onDragButtonPress(GtkWidget* widget, GdkEventButton* event,
+                                              FloatingCustomToolbar* self) -> gboolean {
+    if (event->button != GDK_BUTTON_PRIMARY) {
+        return FALSE;
+    }
+
+    int rootX = 0;
+    int rootY = 0;
+    if (!gtk_widget_translate_coordinates(widget, self->container.get(),
+                                          static_cast<int>(event->x), static_cast<int>(event->y),
+                                          &rootX, &rootY)) {
+        return FALSE;
+    }
+
+    GtkWidget* leaf = findLeafWidgetAt(self->container.get(), self->container.get(), rootX, rootY);
+    if (isInteractiveControl(leaf, self->container.get())) {
+        return FALSE;
+    }
+
+    self->isDragging = true;
+    self->dragStartX = event->x_root;
+    self->dragStartY = event->y_root;
+
+    Settings* settings = self->mainWindow->getControl()->getSettings();
+    self->initialPosX = settings->getFloatingToolbarX();
+    self->initialPosY = settings->getFloatingToolbarY();
+
+    GdkWindow* gdkWin = gtk_widget_get_window(self->container.get());
+    if (gdkWin) {
+        GdkDisplay* display = gdk_window_get_display(gdkWin);
+        GdkCursor* cursor = gdk_cursor_new_from_name(display, "grabbing");
+        gdk_window_set_cursor(gdkWin, cursor);
+        if (cursor) {
+            g_object_unref(cursor);
+        }
+    }
+    return TRUE;
 }
 
 auto FloatingCustomToolbar::onDragMotion(GtkWidget* widget, GdkEventMotion* event,
@@ -285,6 +354,27 @@ auto FloatingCustomToolbar::onDragMotion(GtkWidget* widget, GdkEventMotion* even
             gtk_widget_queue_allocate(GTK_WIDGET(self->overlay.get()));
         }
         return TRUE;
+    } else {
+        int rootX = 0;
+        int rootY = 0;
+        if (gtk_widget_translate_coordinates(widget, self->container.get(),
+                                             static_cast<int>(event->x), static_cast<int>(event->y),
+                                             &rootX, &rootY)) {
+            GtkWidget* leaf = findLeafWidgetAt(self->container.get(), self->container.get(), rootX, rootY);
+            GdkWindow* gdkWin = gtk_widget_get_window(self->container.get());
+            if (gdkWin) {
+                if (isInteractiveControl(leaf, self->container.get())) {
+                    gdk_window_set_cursor(gdkWin, nullptr);
+                } else {
+                    GdkDisplay* display = gdk_window_get_display(gdkWin);
+                    GdkCursor* cursor = gdk_cursor_new_from_name(display, "grab");
+                    gdk_window_set_cursor(gdkWin, cursor);
+                    if (cursor) {
+                        g_object_unref(cursor);
+                    }
+                }
+            }
+        }
     }
     return FALSE;
 }
@@ -294,9 +384,14 @@ auto FloatingCustomToolbar::onDragButtonRelease(GtkWidget* widget, GdkEventButto
     if (event->button == GDK_BUTTON_PRIMARY && self->isDragging) {
         self->isDragging = false;
 
-        GdkWindow* gdkWin = gtk_widget_get_window(widget);
+        GdkWindow* gdkWin = gtk_widget_get_window(self->container.get());
         if (gdkWin) {
-            gdk_window_set_cursor(gdkWin, nullptr);
+            GdkDisplay* display = gdk_window_get_display(gdkWin);
+            GdkCursor* cursor = gdk_cursor_new_from_name(display, "grab");
+            gdk_window_set_cursor(gdkWin, cursor);
+            if (cursor) {
+                g_object_unref(cursor);
+            }
         }
         if (self->overlay) {
             gtk_widget_queue_allocate(GTK_WIDGET(self->overlay.get()));
@@ -306,35 +401,13 @@ auto FloatingCustomToolbar::onDragButtonRelease(GtkWidget* widget, GdkEventButto
     return FALSE;
 }
 
-void FloatingCustomToolbar::onOrientationToggleClicked(GtkButton* button, FloatingCustomToolbar* self) {
-    self->toggleOrientation();
-}
-
-void FloatingCustomToolbar::onCloseClicked(GtkButton* button, FloatingCustomToolbar* self) {
-    self->mainWindow->getControl()->setShowFloatingToolbar(false);
-}
-
-auto FloatingCustomToolbar::onPopupMenu(GtkWidget* widget, GdkEventButton* event,
+auto FloatingCustomToolbar::onDragLeave(GtkWidget* widget, GdkEventCrossing* event,
                                         FloatingCustomToolbar* self) -> gboolean {
-    if (event->button == GDK_BUTTON_SECONDARY) {
-        GtkWidget* menu = gtk_menu_new();
-
-        GtkWidget* itemToggleOrient = gtk_menu_item_new_with_label(
-                self->getOrientation() == GTK_ORIENTATION_HORIZONTAL ? "Switch to Vertical" : "Switch to Horizontal");
-        g_signal_connect_swapped(itemToggleOrient, "activate",
-                                 G_CALLBACK(+[](FloatingCustomToolbar* c) { c->toggleOrientation(); }), self);
-        gtk_menu_shell_append(GTK_MENU_SHELL(menu), itemToggleOrient);
-
-        GtkWidget* itemClose = gtk_menu_item_new_with_label("Hide Floating Toolbar");
-        g_signal_connect_swapped(itemClose, "activate",
-                                 G_CALLBACK(+[](FloatingCustomToolbar* c) {
-                                     c->mainWindow->getControl()->setShowFloatingToolbar(false);
-                                 }), self);
-        gtk_menu_shell_append(GTK_MENU_SHELL(menu), itemClose);
-
-        gtk_widget_show_all(menu);
-        gtk_menu_popup_at_pointer(GTK_MENU(menu), reinterpret_cast<GdkEvent*>(event));
-        return TRUE;
+    if (!self->isDragging) {
+        GdkWindow* gdkWin = gtk_widget_get_window(self->container.get());
+        if (gdkWin) {
+            gdk_window_set_cursor(gdkWin, nullptr);
+        }
     }
     return FALSE;
 }

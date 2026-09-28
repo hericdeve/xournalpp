@@ -39,6 +39,7 @@
 #include "control/tools/TextEditor.h"                            // for Text...
 #include "control/xojfile/LoadHandler.h"                         // for Load...
 #include "control/zoom/ZoomControl.h"                            // for Zoom...
+#include "gui/FloatingCustomToolbar.h"
 #include "gui/FloatingToolbox.h"                                 // for Floa...
 #include "gui/MainWindow.h"                                      // for Main...
 #include "gui/PageView.h"                                        // for XojP...
@@ -1400,6 +1401,7 @@ void Control::showSettings() {
         std::optional<std::filesystem::path> colorPaletteSetting;
         CanvasThemeMode canvasThemeMode;
         RecolorParameters recolorParameters;
+        bool floatingToolbarHorizontal;
     } settingsBeforeDialog = {
             settings->getBorderColor(),
             settings->getAddVerticalSpace(),
@@ -1415,6 +1417,7 @@ void Control::showSettings() {
             settings->getColorPaletteSetting(),
             settings->getCanvasThemeMode(),
             settings->getRecolorParameters(),
+            settings->isFloatingToolbarHorizontal(),
     };
 
     auto dlg = xoj::popup::PopupWindowWrapper<SettingsDialog>(
@@ -1512,6 +1515,14 @@ void Control::showSettings() {
 
                 if (settingsBeforeDialog.sidebarStyle != settings->getSidebarNumberingStyle()) {
                     ctrl->getSidebar()->layout();
+                }
+
+                if (settingsBeforeDialog.floatingToolbarHorizontal != settings->isFloatingToolbarHorizontal()) {
+                    if (ctrl->win->getFloatingCustomToolbar()) {
+                        ctrl->win->getFloatingCustomToolbar()->setOrientation(
+                                settings->isFloatingToolbarHorizontal() ? GTK_ORIENTATION_HORIZONTAL :
+                                                                          GTK_ORIENTATION_VERTICAL);
+                    }
                 }
 
                 xournal->getHandRecognition()->reload();

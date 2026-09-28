@@ -33,10 +33,11 @@ public:
 
     void setOrientation(GtkOrientation orientation);
     GtkOrientation getOrientation() const;
-    void toggleOrientation();
 
     void showForConfiguration();
     void endConfiguration();
+
+    void updateToolItemDragHandlers();
 
     GtkWidget* getToolbarWidget() const;
     GtkWidget* getContainerWidget() const;
@@ -47,22 +48,19 @@ private:
     static gboolean onDragButtonPress(GtkWidget* widget, GdkEventButton* event, FloatingCustomToolbar* self);
     static gboolean onDragMotion(GtkWidget* widget, GdkEventMotion* event, FloatingCustomToolbar* self);
     static gboolean onDragButtonRelease(GtkWidget* widget, GdkEventButton* event, FloatingCustomToolbar* self);
-    static void onOrientationToggleClicked(GtkButton* button, FloatingCustomToolbar* self);
-    static void onCloseClicked(GtkButton* button, FloatingCustomToolbar* self);
-    static gboolean onPopupMenu(GtkWidget* widget, GdkEventButton* event, FloatingCustomToolbar* self);
+    static gboolean onDragLeave(GtkWidget* widget, GdkEventCrossing* event, FloatingCustomToolbar* self);
 
+    static auto findLeafWidgetAt(GtkWidget* root, GtkWidget* widget, int rootX, int rootY) -> GtkWidget*;
+    static auto isInteractiveControl(GtkWidget* leaf, GtkWidget* topContainer) -> bool;
+
+    void connectItemDragHandlers(GtkWidget* item);
     void clampPosition();
-    void updateOrientationUI();
 
 private:
     MainWindow* mainWindow{nullptr};
     xoj::util::GObjectSPtr<GtkOverlay> overlay;
 
     xoj::util::WidgetSPtr container;
-    GtkWidget* handleBox{nullptr};
-    GtkWidget* dragGrip{nullptr};
-    GtkWidget* toggleOrientationBtn{nullptr};
-    GtkWidget* closeBtn{nullptr};
     GtkWidget* toolbar{nullptr};
 
     bool isDragging{false};

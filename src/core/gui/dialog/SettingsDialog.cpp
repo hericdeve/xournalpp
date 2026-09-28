@@ -433,6 +433,11 @@ void SettingsDialog::load() {
     GtkComboBox* cbSidebarNumberingStyle = GTK_COMBO_BOX(builder.get("cbSidebarPageNumberStyle"));
     gtk_combo_box_set_active(cbSidebarNumberingStyle, static_cast<int>(settings->getSidebarNumberingStyle()));
 
+    GtkComboBox* cbFloatingToolbarOrientation = GTK_COMBO_BOX(builder.get("cbFloatingToolbarOrientation"));
+    if (cbFloatingToolbarOrientation) {
+        gtk_combo_box_set_active(cbFloatingToolbarOrientation, settings->isFloatingToolbarHorizontal() ? 1 : 0);
+    }
+
     GtkWidget* txtDefaultSaveName = builder.get("txtDefaultSaveName");
     gtk_editable_set_text(GTK_EDITABLE(txtDefaultSaveName), char_cast(settings->getDefaultSaveName().c_str()));
 
@@ -837,6 +842,12 @@ void SettingsDialog::save() {
 
     settings->setSidebarNumberingStyle(static_cast<SidebarNumberingStyle>(
             gtk_combo_box_get_active(GTK_COMBO_BOX(builder.get("cbSidebarPageNumberStyle")))));
+
+    GtkWidget* cbFloatingToolbarOrientation = builder.get("cbFloatingToolbarOrientation");
+    if (cbFloatingToolbarOrientation) {
+        settings->setFloatingToolbarHorizontal(
+                gtk_combo_box_get_active(GTK_COMBO_BOX(cbFloatingToolbarOrientation)) == 1);
+    }
 
     auto scrollbarHideType =
             static_cast<std::make_unsigned<std::underlying_type<ScrollbarHideType>::type>::type>(SCROLLBAR_HIDE_NONE);
