@@ -94,6 +94,11 @@ void PageBackgroundChangeController::applyPageSizeToAllPages(const PaperSize& pa
     }
 
     control->getUndoRedoHandler()->addUndoAction(std::move(groupUndoAction));
+
+    auto pts = control->getSettings()->getPageTemplateSettings();
+    pts.setPageWidth(paperSize.width);
+    pts.setPageHeight(paperSize.height);
+    control->getSettings()->setPageTemplateSettings(pts);
 }
 
 void PageBackgroundChangeController::applyCurrentPageBackgroundToAll() {
@@ -319,14 +324,18 @@ void PageBackgroundChangeController::insertNewPage(size_t position, bool automat
     }
 
     PageRef current = control->getCurrentPage();
-    xoj_assert(current);
-    double width, height;
+    double width = 0.0;
+    double height = 0.0;
     if (paperSizeForNewPages) {
         width = paperSizeForNewPages->width;
         height = paperSizeForNewPages->height;
-    } else {
+    } else if (current) {
         width = current->getWidth();
         height = current->getHeight();
+    } else {
+        const auto& model = control->getSettings()->getPageTemplateSettings();
+        width = model.getPageWidth();
+        height = model.getPageHeight();
     }
     auto page = std::make_shared<XojPage>(width, height);
 
@@ -335,7 +344,9 @@ void PageBackgroundChangeController::insertNewPage(size_t position, bool automat
     };
 
     if (!pageTypeForNewPages) {
-        copyBackgroundFromOtherPage(page, current);
+        if (current) {
+            copyBackgroundFromOtherPage(page, current);
+        }
         afterConfigured(std::move(page));
     } else if (pageTypeForNewPages->isImagePage()) {
         askForImageBackground([after = std::move(afterConfigured), page = std::move(page)](BackgroundImage img) {

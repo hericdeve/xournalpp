@@ -201,6 +201,18 @@ void PageTypeSelectionPopover::setSelectedPaperSize(const std::optional<PaperSiz
         g_action_activate(G_ACTION(this->pageSizeChangedAction.get()), nullptr);
 
         controller->setPaperSizeForNewPages(selectedPageSize);
+
+        if (settings) {
+            auto pts = settings->getPageTemplateSettings();
+            if (selectedPageSize) {
+                pts.setCopyLastPageSize(false);
+                pts.setPageWidth(selectedPageSize->width);
+                pts.setPageHeight(selectedPageSize->height);
+            } else {
+                pts.setCopyLastPageSize(true);
+            }
+            settings->setPageTemplateSettings(pts);
+        }
     }
 }
 // Explicit instantiation of the two possible bool values to avoid having to put the function template into header
@@ -449,6 +461,13 @@ void PageTypeSelectionPopover::changedOrientationSelectionCallback(GSimpleAction
     if (self->selectedPageSize && (self->selectedPageSize->orientation() != self->selectedOrientation)) {
         self->selectedPageSize->swapWidthHeight();
         self->controller->setPaperSizeForNewPages(self->selectedPageSize);
+        if (self->settings) {
+            auto pts = self->settings->getPageTemplateSettings();
+            pts.setCopyLastPageSize(false);
+            pts.setPageWidth(self->selectedPageSize->width);
+            pts.setPageHeight(self->selectedPageSize->height);
+            self->settings->setPageTemplateSettings(pts);
+        }
     }
 }
 

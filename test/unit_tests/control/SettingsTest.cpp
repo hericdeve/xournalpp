@@ -93,3 +93,13 @@ TEST(SettingsTest, testCanvasThemeModeSerialization) {
     EXPECT_EQ(canvasThemeModeFromString("doNotFollow"), CANVAS_THEME_DO_NOT_FOLLOW);
     EXPECT_EQ(canvasThemeModeFromString("invalid"), CANVAS_THEME_DO_NOT_FOLLOW);
 }
+
+TEST(SettingsTest, testPageTemplateSettingsDefaultCopyLastPageSize) {
+    PageTemplateSettings pts;
+    EXPECT_TRUE(pts.isCopyLastPageSize());
+    EXPECT_TRUE(pts.isCopyLastPageSettings());
+
+    Settings settings{"non-existing-file-path"};
+    EXPECT_TRUE(settings.getPageTemplateSettings().isCopyLastPageSize());
+    EXPECT_TRUE(settings.getPageTemplateSettings().isCopyLastPageSettings());
+}

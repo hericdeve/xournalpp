@@ -1004,6 +1004,16 @@ void Control::paperFormat() {
                 if (pageNo != npos && pageNo < pageCount) {
                     ctrl->firePageSizeChanged(pageNo);
                 }
+
+                auto pts = ctrl->settings->getPageTemplateSettings();
+                pts.setPageWidth(width);
+                pts.setPageHeight(height);
+                ctrl->settings->setPageTemplateSettings(pts);
+                if (!pts.isCopyLastPageSize()) {
+                    if (ctrl->win && ctrl->win->getToolMenuHandler()) {
+                        ctrl->win->getToolMenuHandler()->setDefaultNewPaperSize(PaperSize(width, height));
+                    }
+                }
             });
     popup.show(GTK_WINDOW(this->win->getWindow()));
 }
