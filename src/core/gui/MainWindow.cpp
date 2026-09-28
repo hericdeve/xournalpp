@@ -17,6 +17,7 @@
 #include "control/settings/Settings.h"                  // for Settings
 #include "control/settings/SettingsEnums.h"             // for SCROLLBAR_HIDE_HO...
 #include "control/zoom/ZoomControl.h"                   // for ZoomControl
+#include "gui/FloatingCustomToolbar.h"
 #include "gui/FloatingToolbox.h"                        // for FloatingToolbox
 #include "gui/GladeGui.h"                               // for GladeGui
 #include "gui/PdfFloatingToolbox.h"                     // for PdfFloatingToolbox
@@ -81,9 +82,14 @@ MainWindow::MainWindow(GladeSearchpath* gladeSearchPath, Control* control, GtkAp
     GtkOverlay* overlay = GTK_OVERLAY(get("mainOverlay"));
     this->pdfFloatingToolBox = std::make_unique<PdfFloatingToolbox>(this, overlay);
     this->floatingToolbox = std::make_unique<FloatingToolbox>(this, overlay);
+    this->floatingCustomToolbar = std::make_unique<FloatingCustomToolbar>(this, overlay);
 
     for (size_t i = 0; i < TOOLBAR_DEFINITIONS_LEN; i++) {
-        this->toolbarWidgets[i].reset(get(TOOLBAR_DEFINITIONS[i].guiName), xoj::util::ref);
+        if (i == TBFloatingIndex) {
+            this->toolbarWidgets[i].reset(this->floatingCustomToolbar->getToolbarWidget(), xoj::util::ref);
+        } else {
+            this->toolbarWidgets[i].reset(get(TOOLBAR_DEFINITIONS[i].guiName), xoj::util::ref);
+        }
     }
 
     initXournalWidget();
@@ -800,10 +806,20 @@ void MainWindow::setToolbarVisible(bool visible) {
     Settings* settings = control->getSettings();
 
     settings->setToolbarVisible(visible);
-    for (auto& w: this->toolbarWidgets) {
+    for (size_t i = 0; i < TOOLBAR_DEFINITIONS_LEN; i++) {
+        if (i == TBFloatingIndex) {
+            continue;
+        }
+        auto& w = this->toolbarWidgets[i];
         if (!visible || (gtk_toolbar_get_n_items(GTK_TOOLBAR(w.get())) != 0)) {
             gtk_widget_set_visible(w.get(), visible);
         }
+    }
+}
+
+void MainWindow::setFloatingToolbarVisible(bool visible) {
+    if (this->floatingCustomToolbar) {
+        this->floatingCustomToolbar->setVisible(visible);
     }
 }
 
@@ -864,8 +880,12 @@ void MainWindow::loadToolbar(ToolbarData* d) {
     this->selectedToolbar = d;
 
     for (size_t i = 0; i < TOOLBAR_DEFINITIONS_LEN; i++) {
+        bool horizontal = TOOLBAR_DEFINITIONS[i].horizontal;
+        if (i == TBFloatingIndex && this->floatingCustomToolbar) {
+            horizontal = (this->floatingCustomToolbar->getOrientation() == GTK_ORIENTATION_HORIZONTAL);
+        }
         this->toolbar->load(d, this->toolbarWidgets[i].get(), TOOLBAR_DEFINITIONS[i].propName,
-                            TOOLBAR_DEFINITIONS[i].horizontal);
+                            horizontal);
     }
 
     this->floatingToolbox->flagRecalculateSizeRequired();
@@ -930,6 +950,8 @@ void MainWindow::loadMainCSS(GladeSearchpath* gladeSearchPath, const gchar* cssF
 PdfFloatingToolbox* MainWindow::getPdfToolbox() const { return this->pdfFloatingToolBox.get(); }
 
 FloatingToolbox* MainWindow::getFloatingToolbox() const { return this->floatingToolbox.get(); }
+
+FloatingCustomToolbar* MainWindow::getFloatingCustomToolbar() const { return this->floatingCustomToolbar.get(); }
 
 void MainWindow::setDPI() const {
     if (auto dpi = this->getControl()->getSettings()->getDisplayDpi(); dpi == -1) {

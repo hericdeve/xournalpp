@@ -202,6 +202,10 @@
      <attribute name="accel">F9</attribute>
     </item>
     <item>
+     <attribute name="label" translatable="yes">Show Floating Toolbar</attribute>
+     <attribute name="action">win.show-floating-toolbar</attribute>
+    </item>
+    <item>
      <attribute name="label" translatable="yes">Show Menubar</attribute>
      <attribute name="action">win.show-menubar</attribute>
      <attribute name="accel">F10</attribute>

@@ -692,6 +692,12 @@ void Control::setShowToolbar(bool enabled) {
     }
 }
 
+void Control::setShowFloatingToolbar(bool enabled) {
+    win->setFloatingToolbarVisible(enabled);
+    actionDB->setActionState(Action::SHOW_FLOATING_TOOLBAR, enabled);
+    settings->setFloatingToolbarVisible(enabled);
+}
+
 void Control::setShowMenubar(bool enabled) {
     win->setMenubarVisible(enabled);
     actionDB->setActionState(Action::SHOW_MENUBAR, enabled);

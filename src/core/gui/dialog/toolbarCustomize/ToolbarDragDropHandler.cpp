@@ -5,6 +5,7 @@
 #include <gtk/gtk.h>  // for GtkWidget, GTK_TO...
 
 #include "control/Control.h"                        // for Control
+#include "gui/FloatingCustomToolbar.h"
 #include "gui/FloatingToolbox.h"                    // for FloatingToolbox
 #include "gui/MainWindow.h"                         // for MainWindow
 #include "gui/toolbarMenubar/model/ToolbarModel.h"  // for ToolbarModel
@@ -41,13 +42,18 @@ void ToolbarDragDropHandler::toolbarConfigDialogClosed() {
     auto file = Util::getConfigFile(TOOLBAR_CONFIG);
     win->getToolbarModel()->save(file);
     win->getFloatingToolbox()->hide();
+    if (win->getFloatingCustomToolbar()) {
+        win->getFloatingCustomToolbar()->endConfiguration();
+    }
 }
 
 void ToolbarDragDropHandler::configure() {
     MainWindow* win = control->getWindow();
 
-
     win->getFloatingToolbox()->showForConfiguration();
+    if (win->getFloatingCustomToolbar()) {
+        win->getFloatingCustomToolbar()->showForConfiguration();
+    }
 
     this->prepareToolbarsForDragAndDrop();
 

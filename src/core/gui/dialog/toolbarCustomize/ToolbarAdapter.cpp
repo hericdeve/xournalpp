@@ -6,6 +6,7 @@
 
 #include "control/Control.h"                           // for Control
 #include "control/settings/Settings.h"                 // for Settings
+#include "gui/FloatingCustomToolbar.h"
 #include "gui/MainWindow.h"                            // for MainWindow
 #include "gui/ToolitemDragDrop.h"                      // for ToolItemDragDr...
 #include "gui/toolbarMenubar/AbstractToolItem.h"       // for AbstractToolItem
@@ -69,6 +70,11 @@ void ToolbarAdapter::cleanupToolbars() {
             cleanToolItem(it);
         }
     }
+    // Also update parent container visibility if applicable
+    MainWindow* win = this->window;
+    if (win && win->getFloatingCustomToolbar() && win->getFloatingCustomToolbar()->getToolbarWidget() == this->w) {
+        win->getFloatingCustomToolbar()->endConfiguration();
+    }
 }
 
 void ToolbarAdapter::prepareToolItems() {
@@ -124,6 +130,11 @@ void ToolbarAdapter::prepareToolItem(GtkToolItem* it) {
 void ToolbarAdapter::showToolbar() {
     // force the toolbar to be shown even if empty
     gtk_widget_show(this->w);
+    // Ensure parent container is shown if it is inside a container widget like FloatingCustomToolbar
+    GtkWidget* parent = gtk_widget_get_parent(this->w);
+    if (parent) {
+        gtk_widget_show(parent);
+    }
 }
 
 /**

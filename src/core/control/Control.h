@@ -197,6 +197,7 @@ public:
     void setFullscreen(bool enabled);
     void setShowSidebar(bool enabled);
     void setShowToolbar(bool enabled);
+    void setShowFloatingToolbar(bool enabled);
     void setShowMenubar(bool enabled);
 
     void gotoPage();

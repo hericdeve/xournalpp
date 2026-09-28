@@ -229,6 +229,18 @@ public:
     bool isToolbarVisible() const;
     void setToolbarVisible(bool visible);
 
+    bool isFloatingToolbarVisible() const;
+    void setFloatingToolbarVisible(bool visible);
+
+    bool isFloatingToolbarHorizontal() const;
+    void setFloatingToolbarHorizontal(bool horizontal);
+
+    int getFloatingToolbarX() const;
+    void setFloatingToolbarX(int x);
+
+    int getFloatingToolbarY() const;
+    void setFloatingToolbarY(int y);
+
     int getSidebarWidth() const;
     void setSidebarWidth(int width);
 
@@ -671,6 +683,14 @@ private:
      *  If the sidebar is visible
      */
     bool showToolbar{};
+
+    /**
+     *  Floating toolbar settings
+     */
+    bool showFloatingToolbar{false};
+    bool floatingToolbarHorizontal{false};
+    int floatingToolbarX{80};
+    int floatingToolbarY{80};
 
     /**
      *  The Width of the Sidebar

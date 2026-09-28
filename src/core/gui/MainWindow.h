@@ -39,6 +39,7 @@ class ToolbarModel;
 class XournalView;
 class PdfFloatingToolbox;
 class FloatingToolbox;
+class FloatingCustomToolbar;
 class GladeSearchpath;
 
 class Menubar;
@@ -87,11 +88,13 @@ public:
     void setMenubarVisible(bool visible);
     void setSidebarVisible(bool visible);
     void setToolbarVisible(bool visible);
+    void setFloatingToolbarVisible(bool visible);
 
     Control* getControl() const;
 
     PdfFloatingToolbox* getPdfToolbox() const;
     FloatingToolbox* getFloatingToolbox() const;
+    FloatingCustomToolbar* getFloatingCustomToolbar() const;
 
     void updateScrollbarSidebarPosition();
 
@@ -168,6 +171,7 @@ private:
 
     std::unique_ptr<PdfFloatingToolbox> pdfFloatingToolBox;
     std::unique_ptr<FloatingToolbox> floatingToolbox;
+    std::unique_ptr<FloatingCustomToolbar> floatingCustomToolbar;
 
     // Toolbars
     std::unique_ptr<ToolMenuHandler> toolbar;

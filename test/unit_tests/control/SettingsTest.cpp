@@ -44,6 +44,10 @@ TEST(SettingsTest, testReadWrite) {
         settings.setColorPaletteSetting("foo/bar€_palette");           // path
         settings.setEraserVisibility(ERASER_VISIBILITY_HOVER);         // enum
         settings.setCanvasThemeMode(CANVAS_THEME_FOLLOW_SYSTEM);       // enum
+        settings.setFloatingToolbarVisible(true);                      // bool
+        settings.setFloatingToolbarHorizontal(true);                   // bool
+        settings.setFloatingToolbarX(150);                             // int
+        settings.setFloatingToolbarY(250);                             // int
         settings.setFont(XojFont{"myfontname italic 34"});             // Font
         settings.latexSettings.editorFont = XojFont{"myfonttest 52"};  // Font
         settings.setPreloadPagesAfter(145);                            // unsigned int
@@ -71,6 +75,10 @@ TEST(SettingsTest, testReadWrite) {
         EXPECT_EQ(settings.getActiveViewMode(), loaded.getActiveViewMode());                                // enum
         EXPECT_EQ(settings.getCanvasThemeMode(), loaded.getCanvasThemeMode());                              // enum
         EXPECT_EQ(loaded.getCanvasThemeMode(), CANVAS_THEME_FOLLOW_SYSTEM);                                  // enum
+        EXPECT_EQ(settings.isFloatingToolbarVisible(), loaded.isFloatingToolbarVisible());                  // bool
+        EXPECT_EQ(settings.isFloatingToolbarHorizontal(), loaded.isFloatingToolbarHorizontal());            // bool
+        EXPECT_EQ(settings.getFloatingToolbarX(), loaded.getFloatingToolbarX());                            // int
+        EXPECT_EQ(settings.getFloatingToolbarY(), loaded.getFloatingToolbarY());                            // int
         EXPECT_EQ(settings.getFont().getName(), loaded.getFont().getName());                                // Font
         EXPECT_EQ(settings.getFont().getSize(), loaded.getFont().getSize());                                // Font
         EXPECT_EQ(settings.latexSettings.editorFont.getName(), loaded.latexSettings.editorFont.getName());  // Font
@@ -102,4 +110,22 @@ TEST(SettingsTest, testPageTemplateSettingsDefaultCopyLastPageSize) {
     Settings settings{"non-existing-file-path"};
     EXPECT_TRUE(settings.getPageTemplateSettings().isCopyLastPageSize());
     EXPECT_TRUE(settings.getPageTemplateSettings().isCopyLastPageSettings());
+}
+
+TEST(SettingsTest, testFloatingToolbarSettingsDefaults) {
+    Settings settings{"non-existing-file-path"};
+    EXPECT_FALSE(settings.isFloatingToolbarVisible());
+    EXPECT_FALSE(settings.isFloatingToolbarHorizontal());
+    EXPECT_EQ(settings.getFloatingToolbarX(), 80);
+    EXPECT_EQ(settings.getFloatingToolbarY(), 80);
+
+    settings.setFloatingToolbarVisible(true);
+    settings.setFloatingToolbarHorizontal(true);
+    settings.setFloatingToolbarX(200);
+    settings.setFloatingToolbarY(350);
+
+    EXPECT_TRUE(settings.isFloatingToolbarVisible());
+    EXPECT_TRUE(settings.isFloatingToolbarHorizontal());
+    EXPECT_EQ(settings.getFloatingToolbarX(), 200);
+    EXPECT_EQ(settings.getFloatingToolbarY(), 350);
 }

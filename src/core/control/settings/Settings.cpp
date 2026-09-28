@@ -98,6 +98,10 @@ void Settings::loadDefault() {
     this->sidebarNumberingStyle = SidebarNumberingStyle::DEFAULT;
 
     this->showToolbar = true;
+    this->showFloatingToolbar = false;
+    this->floatingToolbarHorizontal = false;
+    this->floatingToolbarX = 80;
+    this->floatingToolbarY = 80;
     this->selectedToolbar = DEFAULT_TOOLBAR;
 
     this->sidebarOnRight = false;
@@ -445,6 +449,14 @@ void Settings::parseItem(xmlDocPtr doc, xmlNodePtr cur) {
         this->maximized = xmlStrcmp(value, reinterpret_cast<const xmlChar*>("true")) == 0;
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("showToolbar")) == 0) {
         this->showToolbar = xmlStrcmp(value, reinterpret_cast<const xmlChar*>("true")) == 0;
+    } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("showFloatingToolbar")) == 0) {
+        this->showFloatingToolbar = xmlStrcmp(value, reinterpret_cast<const xmlChar*>("true")) == 0;
+    } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("floatingToolbarHorizontal")) == 0) {
+        this->floatingToolbarHorizontal = xmlStrcmp(value, reinterpret_cast<const xmlChar*>("true")) == 0;
+    } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("floatingToolbarX")) == 0) {
+        this->floatingToolbarX = g_ascii_strtoll(reinterpret_cast<const char*>(value), nullptr, 10);
+    } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("floatingToolbarY")) == 0) {
+        this->floatingToolbarY = g_ascii_strtoll(reinterpret_cast<const char*>(value), nullptr, 10);
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("filepathShownInTitlebar")) == 0) {
         this->filepathShownInTitlebar = xmlStrcmp(value, reinterpret_cast<const xmlChar*>("true")) == 0;
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("pageNumberShownInTitlebar")) == 0) {
@@ -1038,6 +1050,10 @@ void Settings::save() {
     SAVE_BOOL_PROP(maximized);
 
     SAVE_BOOL_PROP(showToolbar);
+    SAVE_BOOL_PROP(showFloatingToolbar);
+    SAVE_BOOL_PROP(floatingToolbarHorizontal);
+    SAVE_INT_PROP(floatingToolbarX);
+    SAVE_INT_PROP(floatingToolbarY);
 
     SAVE_BOOL_PROP(showSidebar);
     SAVE_INT_PROP(sidebarWidth);
@@ -2062,6 +2078,46 @@ void Settings::setToolbarVisible(bool visible) {
         return;
     }
     this->showToolbar = visible;
+    save();
+}
+
+auto Settings::isFloatingToolbarVisible() const -> bool { return this->showFloatingToolbar; }
+
+void Settings::setFloatingToolbarVisible(bool visible) {
+    if (this->showFloatingToolbar == visible) {
+        return;
+    }
+    this->showFloatingToolbar = visible;
+    save();
+}
+
+auto Settings::isFloatingToolbarHorizontal() const -> bool { return this->floatingToolbarHorizontal; }
+
+void Settings::setFloatingToolbarHorizontal(bool horizontal) {
+    if (this->floatingToolbarHorizontal == horizontal) {
+        return;
+    }
+    this->floatingToolbarHorizontal = horizontal;
+    save();
+}
+
+auto Settings::getFloatingToolbarX() const -> int { return this->floatingToolbarX; }
+
+void Settings::setFloatingToolbarX(int x) {
+    if (this->floatingToolbarX == x) {
+        return;
+    }
+    this->floatingToolbarX = x;
+    save();
+}
+
+auto Settings::getFloatingToolbarY() const -> int { return this->floatingToolbarY; }
+
+void Settings::setFloatingToolbarY(int y) {
+    if (this->floatingToolbarY == y) {
+        return;
+    }
+    this->floatingToolbarY = y;
     save();
 }
 

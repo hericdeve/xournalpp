@@ -333,6 +333,13 @@ struct ActionProperties<Action::SHOW_TOOLBAR> {
 };
 
 template <>
+struct ActionProperties<Action::SHOW_FLOATING_TOOLBAR> {
+    using state_type = bool;
+    static state_type initialState(Control* ctrl) { return ctrl->getSettings()->isFloatingToolbarVisible(); }
+    static void callback(GSimpleAction*, GVariant* p, Control* ctrl) { ctrl->setShowFloatingToolbar(g_variant_get_boolean(p)); }
+};
+
+template <>
 struct ActionProperties<Action::SET_LAYOUT_VERTICAL> {
     using state_type = bool;
     using parameter_type = state_type;
