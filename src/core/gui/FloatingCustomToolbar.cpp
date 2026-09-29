@@ -195,25 +195,31 @@ void FloatingCustomToolbar::clampPosition() {
         return;
     }
 
-    Settings* settings = mainWindow->getControl()->getSettings();
-    int x = settings->getFloatingToolbarX();
-    int y = settings->getFloatingToolbarY();
+    if (!gtk_widget_get_mapped(GTK_WIDGET(this->overlay.get()))) {
+        return;
+    }
 
-    GtkAllocation overlayAlloc;
-    gtk_widget_get_allocation(GTK_WIDGET(this->overlay.get()), &overlayAlloc);
+    int overlayWidth = gtk_widget_get_allocated_width(GTK_WIDGET(this->overlay.get()));
+    int overlayHeight = gtk_widget_get_allocated_height(GTK_WIDGET(this->overlay.get()));
 
     GtkRequisition natSize;
     gtk_widget_get_preferred_size(this->container.get(), nullptr, &natSize);
 
-    int maxX = std::max(0, overlayAlloc.width - natSize.width);
-    int maxY = std::max(0, overlayAlloc.height - natSize.height);
-
-    if (overlayAlloc.width > 0 && overlayAlloc.height > 0) {
-        x = std::clamp(x, 0, maxX);
-        y = std::clamp(y, 0, maxY);
-        settings->setFloatingToolbarX(x);
-        settings->setFloatingToolbarY(y);
+    if (overlayWidth <= natSize.width || overlayHeight <= natSize.height) {
+        return;
     }
+
+    Settings* settings = mainWindow->getControl()->getSettings();
+    int x = settings->getFloatingToolbarX();
+    int y = settings->getFloatingToolbarY();
+
+    int maxX = overlayWidth - natSize.width;
+    int maxY = overlayHeight - natSize.height;
+
+    x = std::clamp(x, 0, maxX);
+    y = std::clamp(y, 0, maxY);
+    settings->setFloatingToolbarX(x);
+    settings->setFloatingToolbarY(y);
 }
 
 auto FloatingCustomToolbar::getOverlayPosition(GtkOverlay* overlay, GtkWidget* widget, GdkRectangle* alloc,
@@ -226,8 +232,8 @@ auto FloatingCustomToolbar::getOverlayPosition(GtkOverlay* overlay, GtkWidget* w
     int x = settings->getFloatingToolbarX();
     int y = settings->getFloatingToolbarY();
 
-    GtkAllocation overlayAlloc;
-    gtk_widget_get_allocation(GTK_WIDGET(overlay), &overlayAlloc);
+    int overlayWidth = gtk_widget_get_allocated_width(GTK_WIDGET(overlay));
+    int overlayHeight = gtk_widget_get_allocated_height(GTK_WIDGET(overlay));
 
     GtkRequisition natSize;
     gtk_widget_get_preferred_size(widget, nullptr, &natSize);
@@ -235,10 +241,9 @@ auto FloatingCustomToolbar::getOverlayPosition(GtkOverlay* overlay, GtkWidget* w
     alloc->width = std::max(natSize.width, 36);
     alloc->height = std::max(natSize.height, 36);
 
-    int maxX = std::max(0, overlayAlloc.width - alloc->width);
-    int maxY = std::max(0, overlayAlloc.height - alloc->height);
-
-    if (overlayAlloc.width > 0 && overlayAlloc.height > 0) {
+    if (overlayWidth > alloc->width && overlayHeight > alloc->height) {
+        int maxX = overlayWidth - alloc->width;
+        int maxY = overlayHeight - alloc->height;
         x = std::clamp(x, 0, maxX);
         y = std::clamp(y, 0, maxY);
     }
@@ -383,6 +388,9 @@ auto FloatingCustomToolbar::onDragButtonRelease(GtkWidget* widget, GdkEventButto
                                                 FloatingCustomToolbar* self) -> gboolean {
     if (event->button == GDK_BUTTON_PRIMARY && self->isDragging) {
         self->isDragging = false;
+
+        self->clampPosition();
+        self->mainWindow->getControl()->getSettings()->save();
 
         GdkWindow* gdkWin = gtk_widget_get_window(self->container.get());
         if (gdkWin) {
