@@ -472,6 +472,8 @@ void Settings::parseItem(xmlDocPtr doc, xmlNodePtr cur) {
         this->sidebarNumberingStyle = static_cast<SidebarNumberingStyle>(num);
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("sidebarWidth")) == 0) {
         this->sidebarWidth = std::max<int>(g_ascii_strtoll(reinterpret_cast<const char*>(value), nullptr, 10), 50);
+    } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("sidebarSelectedTab")) == 0) {
+        this->sidebarSelectedTab = g_ascii_strtoull(reinterpret_cast<const char*>(value), nullptr, 10);
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("sidebarOnRight")) == 0) {
         this->sidebarOnRight = xmlStrcmp(value, reinterpret_cast<const xmlChar*>("true")) == 0;
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("scrollbarOnLeft")) == 0) {
@@ -1057,6 +1059,7 @@ void Settings::save() {
 
     SAVE_BOOL_PROP(showSidebar);
     SAVE_INT_PROP(sidebarWidth);
+    xmlNode = savePropertyUnsigned("sidebarSelectedTab", static_cast<unsigned int>(sidebarSelectedTab), root);
     xmlNode = saveProperty("sidebarNumberingStyle", static_cast<int>(sidebarNumberingStyle), root);
 
     SAVE_BOOL_PROP(sidebarOnRight);
@@ -2130,6 +2133,16 @@ void Settings::setSidebarWidth(int width) {
         return;
     }
     this->sidebarWidth = width;
+    save();
+}
+
+auto Settings::getSidebarSelectedTab() const -> size_t { return this->sidebarSelectedTab; }
+
+void Settings::setSidebarSelectedTab(size_t tab) {
+    if (this->sidebarSelectedTab == tab) {
+        return;
+    }
+    this->sidebarSelectedTab = tab;
     save();
 }
 

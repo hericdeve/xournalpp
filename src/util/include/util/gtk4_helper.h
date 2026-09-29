@@ -62,6 +62,7 @@ void gtk_check_button_set_active(GtkCheckButton* bt, bool state);
 
 /**** GtkMenuButton ***/
 void gtk_menu_button_set_label(GtkMenuButton* button, const char* label);
+void gtk_menu_button_set_child(GtkMenuButton* button, GtkWidget* child);
 
 /**** GtkButton ****/
 

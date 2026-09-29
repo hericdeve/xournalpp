@@ -67,6 +67,10 @@ void ToolbarData::load(GKeyFile* config, const char* group, const Palette& color
             return "FILL_OPACITY";
         }
 
+        if (name == "RECENT_FILES") {
+            return "RECENT_DOCUMENTS";
+        }
+
         if (StringUtils::startsWith(name, "COLOR(") && StringUtils::endsWith(name, ")")) {
             std::string arg = name.substr(6, name.length() - 7);
             // check for old color format of toolbar.ini

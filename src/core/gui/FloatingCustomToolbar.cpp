@@ -102,6 +102,13 @@ auto FloatingCustomToolbar::getContainerWidget() const -> GtkWidget* {
     return this->container.get();
 }
 
+bool FloatingCustomToolbar::isVisible() const {
+    if (!this->container) {
+        return false;
+    }
+    return gtk_widget_get_visible(this->container.get());
+}
+
 void FloatingCustomToolbar::setVisible(bool visible) {
     if (!this->container) {
         return;
@@ -121,10 +128,6 @@ void FloatingCustomToolbar::setVisible(bool visible) {
     } else {
         gtk_widget_hide(this->container.get());
     }
-}
-
-bool FloatingCustomToolbar::isVisible() const {
-    return this->container && gtk_widget_is_visible(this->container.get());
 }
 
 void FloatingCustomToolbar::setOrientation(GtkOrientation orientation) {

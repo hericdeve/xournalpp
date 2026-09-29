@@ -58,6 +58,11 @@ public:
     void saveSize();
 
     /**
+     * Saves the current selected tab to the settings
+     */
+    void saveSelectedTab();
+
+    /**
      * Request redraw of the sidebar contents
      */
     void queueDraw() {

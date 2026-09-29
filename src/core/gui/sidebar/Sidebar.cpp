@@ -68,6 +68,7 @@ void Sidebar::buttonClicked(GtkButton* button, SidebarTabButton* buttonData) {
     if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(button))) {
         if (buttonData->sidebar->visibleTab != buttonData->page->getWidget()) {
             buttonData->sidebar->setSelectedTab(buttonData->index);
+            buttonData->sidebar->saveSelectedTab();
         }
     } else if (buttonData->sidebar->visibleTab == buttonData->page->getWidget()) {
         gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(button), true);
@@ -117,12 +118,17 @@ void Sidebar::setSelectedTab(size_t tab) {
 void Sidebar::updateVisibleTabs() {
     size_t i = 0;
     size_t selected = npos;
+    size_t savedTab = this->control->getSettings()->getSidebarSelectedTab();
 
     for (auto&& p: this->tabs) {
         gtk_widget_set_visible(GTK_WIDGET(p->tabButton), p->hasData());
 
-        if (p->hasData() && selected == npos) {
-            selected = i;
+        if (p->hasData()) {
+            if (i == savedTab) {
+                selected = i;
+            } else if (selected == npos) {
+                selected = i;
+            }
         }
 
         i++;
@@ -147,6 +153,10 @@ void Sidebar::saveSize() {
     gtk_widget_get_allocation(this->sidebarContents, &alloc);
 
     this->control->getSettings()->setSidebarWidth(alloc.width);
+}
+
+void Sidebar::saveSelectedTab() {
+    this->control->getSettings()->setSidebarSelectedTab(this->currentTabIdx);
 }
 
 size_t Sidebar::getNumberOfTabs() const { return this->tabs.size(); }

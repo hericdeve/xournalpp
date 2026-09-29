@@ -10,7 +10,10 @@
 #include "control/settings/Settings.h"               // for Settings
 #include "gui/GladeGui.h"                            // for GladeGui
 #include "gui/GladeSearchpath.h"
+#include "gui/MainWindow.h"
 #include "gui/ToolitemDragDrop.h"  // for ToolitemDragDrop
+#include "gui/menus/menubar/Menubar.h"
+#include "gui/menus/menubar/RecentDocumentsSubmenu.h"
 #include "gui/menus/popoverMenus/PageTypeSelectionPopover.h"
 #include "gui/toolbarMenubar/model/ColorPalette.h"  // for Palette
 #include "gui/toolbarMenubar/model/ToolbarData.h"   // for ToolbarData
@@ -34,6 +37,7 @@
 #include "FontButton.h"                  // for FontButton
 #include "PluginPlaceholderLabel.h"      // for PluginPlaceholderLabel
 #include "PluginToolButton.h"            // for PluginToolButton
+#include "RecentDocumentsToolButton.h"   // for RecentDocumentsToolButton
 #include "SeparatorItem.h"
 #include "SpacerItem.h"
 #include "StylePopoverFactory.h"     // for ToolButtonWithStylePopover
@@ -269,6 +273,15 @@ void ToolMenuHandler::initToolItems() {
 
     emplaceCustomItem("NEW", Cat::FILES, Action::NEW_FILE, "document-new", _("New Xournal"));
     emplaceCustomItem("OPEN", Cat::FILES, Action::OPEN, "document-open", _("Open file"));
+    emplaceItem<RecentDocumentsToolButton>(
+            "RECENT_DOCUMENTS", Cat::FILES, iconName("document-open-recent"), _("Recent Documents"),
+            [this]() -> GMenuModel* {
+                if (!control || !control->getWindow() || !control->getWindow()->getMenubar() ||
+                    !control->getWindow()->getMenubar()->getRecentDocumentsSubmenu()) {
+                    return nullptr;
+                }
+                return control->getWindow()->getMenubar()->getRecentDocumentsSubmenu()->getMenuModel();
+            });
     emplaceCustomItem("SAVE", Cat::FILES, Action::SAVE, "document-save", _("Save"));
     emplaceCustomItem("SAVEPDF", Cat::FILES, Action::EXPORT_AS_PDF, "document-export-pdf", _("Export as PDF"));
     emplaceCustomItem("PRINT", Cat::FILES, Action::PRINT, "document-print", _("Print"));

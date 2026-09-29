@@ -39,6 +39,8 @@ public:
     void setDisabled(bool disabled) override;
     void addToMenubar(Menubar& menubar) override;
 
+    GMenuModel* getMenuModel() const;
+
 private:
     static void openFileCallback(GSimpleAction* ga, GVariant* parameter, RecentDocumentsSubmenu* self);
     static void removeFileCallback(GSimpleAction* ga, GVariant* parameter, RecentDocumentsSubmenu* self);

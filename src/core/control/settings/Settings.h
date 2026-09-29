@@ -244,6 +244,9 @@ public:
     int getSidebarWidth() const;
     void setSidebarWidth(int width);
 
+    size_t getSidebarSelectedTab() const;
+    void setSidebarSelectedTab(size_t tab);
+
     bool isSidebarOnRight() const;
     void setSidebarOnRight(bool right);
 
@@ -701,6 +704,11 @@ private:
      *  If the sidebar is on the right
      */
     bool sidebarOnRight{};
+
+    /**
+     * Selected tab index of sidebar
+     */
+    size_t sidebarSelectedTab{1};
 
     /**
      *  Type of cursor icon to use with a stylus

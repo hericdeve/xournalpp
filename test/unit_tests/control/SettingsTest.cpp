@@ -48,6 +48,7 @@ TEST(SettingsTest, testReadWrite) {
         settings.setFloatingToolbarHorizontal(true);                   // bool
         settings.setFloatingToolbarX(150);                             // int
         settings.setFloatingToolbarY(250);                             // int
+        settings.setSidebarSelectedTab(2);                             // unsigned int
         settings.setFont(XojFont{"myfontname italic 34"});             // Font
         settings.latexSettings.editorFont = XojFont{"myfonttest 52"};  // Font
         settings.setPreloadPagesAfter(145);                            // unsigned int
@@ -79,6 +80,7 @@ TEST(SettingsTest, testReadWrite) {
         EXPECT_EQ(settings.isFloatingToolbarHorizontal(), loaded.isFloatingToolbarHorizontal());            // bool
         EXPECT_EQ(settings.getFloatingToolbarX(), loaded.getFloatingToolbarX());                            // int
         EXPECT_EQ(settings.getFloatingToolbarY(), loaded.getFloatingToolbarY());                            // int
+        EXPECT_EQ(settings.getSidebarSelectedTab(), loaded.getSidebarSelectedTab());                        // unsigned int
         EXPECT_EQ(settings.getFont().getName(), loaded.getFont().getName());                                // Font
         EXPECT_EQ(settings.getFont().getSize(), loaded.getFont().getSize());                                // Font
         EXPECT_EQ(settings.latexSettings.editorFont.getName(), loaded.latexSettings.editorFont.getName());  // Font

@@ -40,6 +40,7 @@ public:
     inline GMenuModel* getModel() const { return menu; }
     inline ToolbarSelectionSubmenu& getToolbarSelectionSubmenu() const { return *toolbarSelectionSubmenu; }
     inline PageTypeSubmenu& getPageTypeSubmenu() const { return *pageTypeSubmenu; }
+    inline RecentDocumentsSubmenu* getRecentDocumentsSubmenu() const { return recentDocumentsSubmenu.get(); }
 
     void setDisabled(bool disabled);
 

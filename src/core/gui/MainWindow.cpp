@@ -802,10 +802,9 @@ void MainWindow::updatePanedPosition(int contentWidth) {
     }
 }
 
-void MainWindow::setToolbarVisible(bool visible) {
-    Settings* settings = control->getSettings();
+bool MainWindow::isSidebarVisible() const { return this->sidebarVisible; }
 
-    settings->setToolbarVisible(visible);
+void MainWindow::setToolbarVisible(bool visible) {
     for (size_t i = 0; i < TOOLBAR_DEFINITIONS_LEN; i++) {
         if (i == TBFloatingIndex) {
             continue;
@@ -817,14 +816,29 @@ void MainWindow::setToolbarVisible(bool visible) {
     }
 }
 
+bool MainWindow::isToolbarVisible() const {
+    return this->control->getSettings()->isToolbarVisible();
+}
+
 void MainWindow::setFloatingToolbarVisible(bool visible) {
     if (this->floatingCustomToolbar) {
         this->floatingCustomToolbar->setVisible(visible);
     }
 }
 
+bool MainWindow::isFloatingToolbarVisible() const {
+    if (this->floatingCustomToolbar) {
+        return this->floatingCustomToolbar->isVisible();
+    }
+    return false;
+}
+
 void MainWindow::setMenubarVisible(bool visible) {
     gtk_application_window_set_show_menubar(GTK_APPLICATION_WINDOW(this->getWindow()), visible);
+}
+
+bool MainWindow::isMenubarVisible() const {
+    return gtk_application_window_get_show_menubar(GTK_APPLICATION_WINDOW(this->getWindow()));
 }
 
 void MainWindow::setMaximized(bool maximized) { this->maximized = maximized; }

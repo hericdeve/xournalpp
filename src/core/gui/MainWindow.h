@@ -86,9 +86,13 @@ public:
     XournalView* getXournal() const;
 
     void setMenubarVisible(bool visible);
+    bool isMenubarVisible() const;
     void setSidebarVisible(bool visible);
+    bool isSidebarVisible() const;
     void setToolbarVisible(bool visible);
+    bool isToolbarVisible() const;
     void setFloatingToolbarVisible(bool visible);
+    bool isFloatingToolbarVisible() const;
 
     Control* getControl() const;
 

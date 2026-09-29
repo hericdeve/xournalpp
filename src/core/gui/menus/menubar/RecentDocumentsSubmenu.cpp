@@ -218,6 +218,10 @@ void RecentDocumentsSubmenu::addToMenubar(Menubar& menubar) {
     updateMenu();
 }
 
+auto RecentDocumentsSubmenu::getMenuModel() const -> GMenuModel* {
+    return recentFilesSubmenu ? G_MENU_MODEL(recentFilesSubmenu.get()) : nullptr;
+}
+
 void RecentDocumentsSubmenu::setDisabled(bool disabled) {
     g_simple_action_set_enabled(openFileAction.get(), !disabled);
     g_simple_action_set_enabled(clearListAction.get(), !disabled);

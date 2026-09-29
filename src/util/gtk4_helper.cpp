@@ -134,6 +134,10 @@ void gtk_menu_button_set_label(GtkMenuButton* button, const char* label) {
     set_child(GTK_CONTAINER(button), gtk_label_new(label));
 }
 
+void gtk_menu_button_set_child(GtkMenuButton* button, GtkWidget* child) {
+    set_child(GTK_CONTAINER(button), child);
+}
+
 /**** GtkButton ****/
 
 void gtk_button_set_child(GtkButton* button, GtkWidget* child) { set_child(GTK_CONTAINER(button), child); }

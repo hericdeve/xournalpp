@@ -28,8 +28,8 @@ public:
     FloatingCustomToolbar(FloatingCustomToolbar&&) = delete;
     FloatingCustomToolbar& operator=(FloatingCustomToolbar&&) = delete;
 
-    void setVisible(bool visible);
     bool isVisible() const;
+    void setVisible(bool visible);
 
     void setOrientation(GtkOrientation orientation);
     GtkOrientation getOrientation() const;

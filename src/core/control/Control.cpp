@@ -284,7 +284,21 @@ void Control::saveSettings() {
     }
     this->settings->setMainWndMaximized(this->win->isMaximized());
 
+    this->settings->setMenubarVisible(this->win->isMenubarVisible());
+    this->settings->setToolbarVisible(this->win->isToolbarVisible());
+    this->settings->setSidebarVisible(this->win->isSidebarVisible());
+    this->settings->setFloatingToolbarVisible(this->win->isFloatingToolbarVisible());
+
+    if (this->settings->getActiveViewMode() == PresetViewModeIds::VIEW_MODE_DEFAULT) {
+        ViewMode viewMode = this->settings->getViewModes()[PresetViewModeIds::VIEW_MODE_DEFAULT];
+        viewMode.showMenubar = this->win->isMenubarVisible();
+        viewMode.showToolbar = this->win->isToolbarVisible();
+        viewMode.showSidebar = this->win->isSidebarVisible();
+        this->settings->setViewMode(PresetViewModeIds::VIEW_MODE_DEFAULT, viewMode);
+    }
+
     this->sidebar->saveSize();
+    this->sidebar->saveSelectedTab();
 
     this->settings->save();
 }
@@ -673,12 +687,15 @@ void Control::setShowSidebar(bool enabled) {
     win->setSidebarVisible(enabled);
     actionDB->setActionState(Action::SHOW_SIDEBAR, enabled);
 
-    if (settings->isSidebarVisible() != enabled &&
-        settings->getActiveViewMode() == PresetViewModeIds::VIEW_MODE_DEFAULT) {
+    if (settings->isSidebarVisible() != enabled) {
         settings->setSidebarVisible(enabled);
+    }
+    if (settings->getActiveViewMode() == PresetViewModeIds::VIEW_MODE_DEFAULT) {
         ViewMode viewMode = settings->getViewModes()[PresetViewModeIds::VIEW_MODE_DEFAULT];
-        viewMode.showSidebar = enabled;
-        settings->setViewMode(PresetViewModeIds::VIEW_MODE_DEFAULT, viewMode);
+        if (viewMode.showSidebar != enabled) {
+            viewMode.showSidebar = enabled;
+            settings->setViewMode(PresetViewModeIds::VIEW_MODE_DEFAULT, viewMode);
+        }
     }
 }
 
@@ -686,24 +703,40 @@ void Control::setShowToolbar(bool enabled) {
     win->setToolbarVisible(enabled);
     actionDB->setActionState(Action::SHOW_TOOLBAR, enabled);
 
-    if (settings->isToolbarVisible() != enabled &&
-        settings->getActiveViewMode() == PresetViewModeIds::VIEW_MODE_DEFAULT) {
+    if (settings->isToolbarVisible() != enabled) {
         settings->setToolbarVisible(enabled);
+    }
+    if (settings->getActiveViewMode() == PresetViewModeIds::VIEW_MODE_DEFAULT) {
         ViewMode viewMode = settings->getViewModes()[PresetViewModeIds::VIEW_MODE_DEFAULT];
-        viewMode.showToolbar = enabled;
-        settings->setViewMode(PresetViewModeIds::VIEW_MODE_DEFAULT, viewMode);
+        if (viewMode.showToolbar != enabled) {
+            viewMode.showToolbar = enabled;
+            settings->setViewMode(PresetViewModeIds::VIEW_MODE_DEFAULT, viewMode);
+        }
     }
 }
 
 void Control::setShowFloatingToolbar(bool enabled) {
     win->setFloatingToolbarVisible(enabled);
     actionDB->setActionState(Action::SHOW_FLOATING_TOOLBAR, enabled);
-    settings->setFloatingToolbarVisible(enabled);
+    if (settings->isFloatingToolbarVisible() != enabled) {
+        settings->setFloatingToolbarVisible(enabled);
+    }
 }
 
 void Control::setShowMenubar(bool enabled) {
     win->setMenubarVisible(enabled);
     actionDB->setActionState(Action::SHOW_MENUBAR, enabled);
+
+    if (settings->isMenubarVisible() != enabled) {
+        settings->setMenubarVisible(enabled);
+    }
+    if (settings->getActiveViewMode() == PresetViewModeIds::VIEW_MODE_DEFAULT) {
+        ViewMode viewMode = settings->getViewModes()[PresetViewModeIds::VIEW_MODE_DEFAULT];
+        if (viewMode.showMenubar != enabled) {
+            viewMode.showMenubar = enabled;
+            settings->setViewMode(PresetViewModeIds::VIEW_MODE_DEFAULT, viewMode);
+        }
+    }
 }
 
 void Control::disableSidebarTmp(bool disabled) { this->sidebar->setTmpDisabled(disabled); }
@@ -1430,6 +1463,7 @@ void Control::showSettings() {
                 MainWindow* win = ctrl->win;
                 XournalView* xournal = win->getXournal();
                 // note which settings have changed and act accordingly
+                ctrl->setShowMenubar(settings->isMenubarVisible());
                 if (settingsBeforeDialog.selectionColor != settings->getBorderColor()) {
                     xournal->forceUpdatePagenumbers();
                 }
