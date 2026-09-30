@@ -31,6 +31,9 @@ auto onScrolledwindowMainScrollEvent(GtkWidget* widget, GdkEventScroll* event, Z
     }
 
     if (state & GDK_CONTROL_MASK) {
+        if (zoom->isZoomLocked()) {
+            return true;
+        }
         auto direction =
                 (event->direction == GDK_SCROLL_UP || (event->direction == GDK_SCROLL_SMOOTH && event->delta_y < 0)) ?
                         ZOOM_IN :
@@ -46,6 +49,9 @@ auto onScrolledwindowMainScrollEvent(GtkWidget* widget, GdkEventScroll* event, Z
 }
 
 auto onTouchpadPinchEvent(GtkWidget* widget, GdkEventTouchpadPinch* event, ZoomControl* zoom) -> bool {
+    if (zoom->isZoomLocked()) {
+        return false;
+    }
     if (event->type == GDK_TOUCHPAD_PINCH && event->n_fingers == 2) {
         switch (event->phase) {
             case GDK_TOUCHPAD_GESTURE_PHASE_BEGIN: {
@@ -247,6 +253,18 @@ void ZoomControl::fireZoomRangeValueChanged() {
 auto ZoomControl::getZoom() const -> double { return this->zoom; }
 
 auto ZoomControl::getZoomReal() const -> double { return this->zoom / this->zoom100Value; }
+
+auto ZoomControl::isZoomLocked() const -> bool { return this->zoomLocked; }
+
+void ZoomControl::setZoomLocked(bool locked) {
+    if (this->zoomLocked == locked) {
+        return;
+    }
+    this->zoomLocked = locked;
+    if (this->control && this->control->getActionDatabase()) {
+        this->control->getActionDatabase()->setActionState(Action::LOCK_ZOOM, locked);
+    }
+}
 
 void ZoomControl::setZoom(double zoomI) {
     zoomI = std::clamp(zoomI, this->zoomMin, this->zoomMax);

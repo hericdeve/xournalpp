@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 
 #include <regex>
+#include <sstream>
 
 #include <gdk-pixbuf/gdk-pixbuf.h>  // for gdk_pixbuf_new_fr...
 #include <gdk/gdk.h>                // for gdk_screen_get_de...
@@ -422,6 +423,7 @@ void MainWindow::updateColorscheme() {
     }
     g_signal_handlers_unblock_by_func(gtk_widget_get_settings(this->window), reinterpret_cast<gpointer>(themeCallback),
                                       this);
+    this->updateFloatingWidgetsTheme();
     this->updateCanvasTheme();
 }
 
@@ -503,6 +505,79 @@ void MainWindow::updateCanvasTheme() {
     }
     if (this->xournal && this->xournal->getWidget()) {
         gtk_widget_queue_draw(this->xournal->getWidget());
+    }
+}
+
+void MainWindow::updateFloatingWidgetsTheme() {
+    if (!this->window) {
+        return;
+    }
+    if (!this->floatingCssProvider) {
+        this->floatingCssProvider = xoj::util::GObjectSPtr<GtkCssProvider>(gtk_css_provider_new(), xoj::util::adopt);
+        gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),
+                                                  GTK_STYLE_PROVIDER(this->floatingCssProvider.get()),
+                                                  GTK_STYLE_PROVIDER_PRIORITY_APPLICATION + 2);
+    }
+
+    auto [sysBg, sysFg] = getSystemThemeColors(this->window, this->darkMode);
+
+    std::string borderCss = this->darkMode ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.15)";
+    std::string shadowCss = this->darkMode ? "0px 4px 12px rgba(0, 0, 0, 0.5)" : "0px 2px 8px rgba(0, 0, 0, 0.15)";
+    std::string hoverCss = this->darkMode ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.08)";
+    std::string activeCss = this->darkMode ? "rgba(255, 255, 255, 0.22)" : "rgba(0, 0, 0, 0.16)";
+
+    std::ostringstream css;
+    css << "#floatingToolbarContainer,\n"
+        << "#floatingToolbox > box,\n"
+        << "#pdfFloatingToolGrid {\n"
+        << "  background-color: rgba(" << static_cast<int>(sysBg.red) << ", "
+                                       << static_cast<int>(sysBg.green) << ", "
+                                       << static_cast<int>(sysBg.blue) << ", 0.95);\n"
+        << "  color: rgb(" << static_cast<int>(sysFg.red) << ", "
+                           << static_cast<int>(sysFg.green) << ", "
+                           << static_cast<int>(sysFg.blue) << ");\n"
+        << "  border: 1px solid " << borderCss << ";\n"
+        << "  box-shadow: " << shadowCss << ";\n"
+        << "}\n\n"
+        << "#floatingToolbarContainer toolbar,\n"
+        << "#floatingToolbox box toolbar {\n"
+        << "  background-color: transparent;\n"
+        << "  box-shadow: none;\n"
+        << "}\n\n"
+        << "#floatingToolbarContainer toolbar button,\n"
+        << "#floatingToolbox button,\n"
+        << "#pdfFloatingToolGrid button,\n"
+        << "#floatingToolbox label {\n"
+        << "  color: rgb(" << static_cast<int>(sysFg.red) << ", "
+                           << static_cast<int>(sysFg.green) << ", "
+                           << static_cast<int>(sysFg.blue) << ");\n"
+        << "}\n\n"
+        << "#floatingToolbarContainer toolbar button:hover,\n"
+        << "#floatingToolbox button:hover,\n"
+        << "#pdfFloatingToolGrid button:hover {\n"
+        << "  background-color: " << hoverCss << ";\n"
+        << "}\n\n"
+        << "#floatingToolbarContainer toolbar button:checked,\n"
+        << "#floatingToolbarContainer toolbar button:active,\n"
+        << "#floatingToolbox button:checked,\n"
+        << "#floatingToolbox button:active {\n"
+        << "  background-color: " << activeCss << ";\n"
+        << "}\n\n"
+        << "#floatingToolbarContainer separator,\n"
+        << "#floatingToolbox separator {\n"
+        << "  background-color: " << borderCss << ";\n"
+        << "}\n";
+
+    gtk_css_provider_load_from_data(this->floatingCssProvider.get(), css.str().c_str(), -1, nullptr);
+
+    if (this->floatingCustomToolbar && this->floatingCustomToolbar->getContainerWidget()) {
+        gtk_widget_queue_draw(this->floatingCustomToolbar->getContainerWidget());
+    }
+    if (GtkWidget* ftWidget = get("floatingToolbox")) {
+        gtk_widget_queue_draw(ftWidget);
+    }
+    if (GtkWidget* pdfGrid = get("pdfFloatingToolGrid")) {
+        gtk_widget_queue_draw(pdfGrid);
     }
 }
 

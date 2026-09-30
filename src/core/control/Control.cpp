@@ -162,6 +162,8 @@ Control::Control(GApplication* gtkApp, GladeSearchpath* gladeSearchPath, bool di
     this->toolHandler = new ToolHandler(this, this->actionDB.get(), this->settings);
     this->toolHandler->loadSettings();
     this->initButtonTool();
+    this->penPresetManager = std::make_unique<PenPresetManager>(this, this->settings);
+    this->customShapeManager = std::make_unique<xoj::circuit::CustomShapeManager>();
 
     /**
      * This is needed to update the previews
@@ -2712,6 +2714,12 @@ auto Control::getCursor() const -> XournalppCursor* { return this->cursor; }
 auto Control::getDocument() const -> Document* { return this->doc; }
 
 auto Control::getToolHandler() const -> ToolHandler* { return this->toolHandler; }
+
+auto Control::getPenPresetManager() const -> PenPresetManager* { return this->penPresetManager.get(); }
+
+auto Control::getCustomShapeManager() const -> xoj::circuit::CustomShapeManager* {
+    return this->customShapeManager.get();
+}
 
 auto Control::getScheduler() const -> XournalScheduler* { return this->scheduler; }
 

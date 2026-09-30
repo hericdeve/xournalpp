@@ -20,6 +20,7 @@
 #include "control/settings/SettingsEnums.h"         // for InputDeviceTypeOp...
 #include "gui/toolbarMenubar/model/ColorPalette.h"  // for Palette
 #include "model/FormatDefinitions.h"                // for FormatUnits, XOJ_...
+#include "model/StrokeStyle.h"
 #include "util/Color.h"
 #include "util/PathUtil.h"  // for getConfigFile
 #include "util/Util.h"      // for PRECISION_FORMAT_...
@@ -248,7 +249,16 @@ void Settings::loadDefault() {
     this->trySelectOnStrokeFiltered = false;
 
     this->snapRecognizedShapesEnabled = false;
+    this->drawAndHoldEnabled = true;
+    this->drawAndHoldTimeout = 450;
+    this->drawAndHoldResizeEnabled = true;
     this->restoreLineWidthEnabled = false;
+
+    this->penPresets.clear();
+    this->penPresets.emplace_back("preset_black_pen", "Black Pen", TOOL_PEN, TOOL_SIZE_FINE, Color(0x000000));
+    this->penPresets.emplace_back("preset_blue_pen", "Blue Pen", TOOL_PEN, TOOL_SIZE_FINE, Color(0x0055ff));
+    this->penPresets.emplace_back("preset_red_pen", "Red Pen", TOOL_PEN, TOOL_SIZE_FINE, Color(0xff0000));
+    this->penPresets.emplace_back("preset_highlighter", "Highlighter", TOOL_HIGHLIGHTER, TOOL_SIZE_MEDIUM, Color(0xffff00));
 
     this->inTransaction = false;
 
@@ -717,6 +727,13 @@ void Settings::parseItem(xmlDocPtr doc, xmlNodePtr cur) {
         this->latexSettings.temporaryFileExt = std::string{reinterpret_cast<char*>(value)};
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("snapRecognizedShapesEnabled")) == 0) {
         this->snapRecognizedShapesEnabled = xmlStrcmp(value, reinterpret_cast<const xmlChar*>("true")) == 0;
+    } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("drawAndHoldEnabled")) == 0) {
+        this->drawAndHoldEnabled = xmlStrcmp(value, reinterpret_cast<const xmlChar*>("true")) == 0;
+    } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("drawAndHoldTimeout")) == 0) {
+        this->drawAndHoldTimeout =
+                static_cast<int>(g_ascii_strtoll(reinterpret_cast<const char*>(value), nullptr, 10));
+    } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("drawAndHoldResizeEnabled")) == 0) {
+        this->drawAndHoldResizeEnabled = xmlStrcmp(value, reinterpret_cast<const xmlChar*>("true")) == 0;
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("restoreLineWidthEnabled")) == 0) {
         this->restoreLineWidthEnabled = xmlStrcmp(value, reinterpret_cast<const xmlChar*>("true")) == 0;
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("preferredLocale")) == 0) {
@@ -890,6 +907,7 @@ auto Settings::load() -> bool {
     xmlFreeDoc(doc);
 
     loadButtonConfig();
+    loadPenPresets();
     loadDeviceClasses();
 
     // This must be done before the color palette to ensure the color names are translated properly
@@ -945,6 +963,85 @@ void Settings::saveDeviceClasses() {
         e.setInt("deviceClass", static_cast<int>(deviceClass));
         e.setInt("deviceSource", source);
     }
+}
+
+void Settings::savePenPresets() {
+    SElement& s = getCustomElement("penPresets");
+    s.clear();
+
+    for (size_t i = 0; i < penPresets.size(); i++) {
+        const auto& preset = penPresets[i];
+        SElement& e = s.child("preset_" + std::to_string(i));
+        e.setString("id", preset.id);
+        e.setString("name", preset.name);
+        e.setString("tool", toolTypeToString(preset.toolType).data());
+        e.setString("size", toolSizeToString(preset.size).data());
+        e.setIntHex("color", int32_t(uint32_t(preset.color)));
+        e.setString("strokeType", StrokeStyle::formatStyle(preset.lineStyle));
+        e.setString("drawingType", drawingTypeToString(preset.drawingType).data());
+        e.setBool("fillEnabled", preset.fillEnabled);
+        e.setInt("fillAlpha", preset.fillAlpha);
+    }
+}
+
+void Settings::loadPenPresets() {
+    SElement& s = getCustomElement("penPresets");
+    auto& ch = s.children();
+    if (ch.empty()) {
+        return;
+    }
+
+    penPresets.clear();
+    for (auto& pair: ch) {
+        SElement& e = pair.second;
+        PenPreset p;
+        e.getString("id", p.id);
+        e.getString("name", p.name);
+
+        std::string sTool;
+        if (e.getString("tool", sTool)) {
+            p.toolType = toolTypeFromString(sTool);
+        }
+
+        std::string sSize;
+        if (e.getString("size", sSize)) {
+            p.size = toolSizeFromString(sSize);
+        }
+
+        int col = 0;
+        if (e.getInt("color", col)) {
+            p.color = Color(static_cast<uint32_t>(col));
+        }
+
+        std::string sStroke;
+        if (e.getString("strokeType", sStroke)) {
+            p.lineStyle = StrokeStyle::parseStyle(sStroke);
+        }
+
+        std::string sDrawing;
+        if (e.getString("drawingType", sDrawing)) {
+            p.drawingType = drawingTypeFromString(sDrawing);
+        }
+
+        bool fill = false;
+        if (e.getBool("fillEnabled", fill)) {
+            p.fillEnabled = fill;
+        }
+
+        int alpha = 128;
+        if (e.getInt("fillAlpha", alpha)) {
+            p.fillAlpha = alpha;
+        }
+
+        penPresets.push_back(p);
+    }
+}
+
+const std::vector<PenPreset>& Settings::getPenPresets() const { return this->penPresets; }
+
+void Settings::setPenPresets(const std::vector<PenPreset>& presets) {
+    this->penPresets = presets;
+    customSettingsChanged();
 }
 
 void Settings::saveButtonConfig() {
@@ -1018,6 +1115,7 @@ void Settings::save() {
     }
 
     saveButtonConfig();
+    savePenPresets();
     saveDeviceClasses();
 
     /* Create metadata root */
@@ -1208,6 +1306,9 @@ void Settings::save() {
     SAVE_BOOL_PROP(trySelectOnStrokeFiltered);
 
     SAVE_BOOL_PROP(snapRecognizedShapesEnabled);
+    SAVE_BOOL_PROP(drawAndHoldEnabled);
+    SAVE_INT_PROP(drawAndHoldTimeout);
+    SAVE_BOOL_PROP(drawAndHoldResizeEnabled);
     SAVE_BOOL_PROP(restoreLineWidthEnabled);
 
     SAVE_INT_PROP(numIgnoredStylusEvents);
@@ -2449,6 +2550,18 @@ auto Settings::getDoActionOnStrokeFiltered() const -> bool { return this->doActi
 void Settings::setTrySelectOnStrokeFiltered(bool enabled) { this->trySelectOnStrokeFiltered = enabled; }
 
 auto Settings::getTrySelectOnStrokeFiltered() const -> bool { return this->trySelectOnStrokeFiltered; }
+
+void Settings::setDrawAndHoldEnabled(bool enabled) { this->drawAndHoldEnabled = enabled; }
+
+auto Settings::getDrawAndHoldEnabled() const -> bool { return this->drawAndHoldEnabled; }
+
+void Settings::setDrawAndHoldTimeout(int timeout) { this->drawAndHoldTimeout = timeout; }
+
+auto Settings::getDrawAndHoldTimeout() const -> int { return this->drawAndHoldTimeout; }
+
+void Settings::setDrawAndHoldResizeEnabled(bool enabled) { this->drawAndHoldResizeEnabled = enabled; }
+
+auto Settings::getDrawAndHoldResizeEnabled() const -> bool { return this->drawAndHoldResizeEnabled; }
 
 void Settings::setSnapRecognizedShapesEnabled(bool enabled) { this->snapRecognizedShapesEnabled = enabled; }
 

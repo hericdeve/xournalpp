@@ -177,6 +177,9 @@ public:
 
     void setZoomStepScroll(double zoomStep);
 
+    bool isZoomLocked() const;
+    void setZoomLocked(bool locked);
+
 protected:
     void fireZoomChanged();
     void fireZoomRangeValueChanged();
@@ -213,6 +216,7 @@ private:
     double zoom = 1.0;
     bool zoomFitMode = false;
     bool zoomPresentationMode = false;
+    bool zoomLocked = false;
 
     /// Zoom value for 100% depends on the dpi
     double zoom100Value = 1.0;

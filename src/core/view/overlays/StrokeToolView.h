@@ -15,13 +15,13 @@
 #include <cairo.h>
 
 #include "util/DispatchPool.h"
+#include "util/Range.h"
 #include "view/Mask.h"
 
 #include "BaseStrokeToolView.h"
 
 class StrokeHandler;
 class Point;
-class Range;
 class Stroke;
 class OverlayBase;
 
@@ -50,7 +50,7 @@ public:
 
     static constexpr struct StrokeReplacementRequest {
     } STROKE_REPLACEMENT_REQUEST = {};
-    virtual void on(StrokeReplacementRequest, const Stroke& newStroke);
+    virtual void on(StrokeReplacementRequest, const Stroke& newStroke, const Range& dirtyRange = Range());
 
     static constexpr struct CancellationRequest {
     } CANCELLATION_REQUEST = {};

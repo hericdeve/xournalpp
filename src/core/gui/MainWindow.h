@@ -164,6 +164,11 @@ private:
      */
     static void loadMainCSS(GladeSearchpath* gladeSearchPath, const gchar* cssFilename);
 
+    /**
+     * Updates the dynamic theme colors for floating overlays (FloatingToolbox, FloatingCustomToolbar, PdfFloatingToolbox)
+     */
+    void updateFloatingWidgetsTheme();
+
 private:
     Control* control;
 
@@ -176,6 +181,7 @@ private:
     std::unique_ptr<PdfFloatingToolbox> pdfFloatingToolBox;
     std::unique_ptr<FloatingToolbox> floatingToolbox;
     std::unique_ptr<FloatingCustomToolbar> floatingCustomToolbar;
+    xoj::util::GObjectSPtr<GtkCssProvider> floatingCssProvider;
 
     // Toolbars
     std::unique_ptr<ToolMenuHandler> toolbar;

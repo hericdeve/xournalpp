@@ -474,6 +474,15 @@ void SettingsDialog::load() {
     GtkWidget* spStrokeRecognizerMinSize = builder.get("spStrokeRecognizerMinSize");
     gtk_spin_button_set_value(GTK_SPIN_BUTTON(spStrokeRecognizerMinSize), settings->getStrokeRecognizerMinSize());
 
+    GtkWidget* cbDrawAndHold = builder.get("cbDrawAndHold");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cbDrawAndHold), settings->getDrawAndHoldEnabled());
+
+    GtkWidget* spDrawAndHoldDuration = builder.get("spDrawAndHoldDuration");
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(spDrawAndHoldDuration), settings->getDrawAndHoldTimeout());
+
+    GtkWidget* cbDrawAndHoldResize = builder.get("cbDrawAndHoldResize");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cbDrawAndHoldResize), settings->getDrawAndHoldResizeEnabled());
+
     gtk_spin_button_set_value(GTK_SPIN_BUTTON(builder.get("edgePanSpeed")), settings->getEdgePanSpeed());
     gtk_spin_button_set_value(GTK_SPIN_BUTTON(builder.get("edgePanMaxMult")), settings->getEdgePanMaxMult());
 
@@ -1115,6 +1124,13 @@ void SettingsDialog::save() {
 
     settings->setStrokeRecognizerMinSize(
             static_cast<double>(gtk_spin_button_get_value(GTK_SPIN_BUTTON(builder.get("spStrokeRecognizerMinSize")))));
+
+    settings->setDrawAndHoldEnabled(
+            gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(builder.get("cbDrawAndHold"))));
+    settings->setDrawAndHoldTimeout(
+            static_cast<int>(gtk_spin_button_get_value(GTK_SPIN_BUTTON(builder.get("spDrawAndHoldDuration")))));
+    settings->setDrawAndHoldResizeEnabled(
+            gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(builder.get("cbDrawAndHoldResize"))));
 
 #ifdef ENABLE_AUDIO
     auto file = gtk_file_chooser_get_file(GTK_FILE_CHOOSER(builder.get("fcAudioPath")));

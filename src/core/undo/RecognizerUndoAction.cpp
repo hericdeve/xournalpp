@@ -26,13 +26,17 @@ RecognizerUndoAction::RecognizerUndoAction(const PageRef& page, Layer* layer, El
 RecognizerUndoAction::~RecognizerUndoAction() = default;
 
 auto RecognizerUndoAction::undo(Control* control) -> bool {
-    Document* doc = control->getDocument();
-    doc->lock();
+    Document* doc = control ? control->getDocument() : nullptr;
+    if (doc) {
+        doc->lock();
+    }
     auto [owned, pos] = this->layer->removeElement(this->recognized);
     this->recognizedOwned = std::move(owned);
 
     this->layer->insertElement(std::move(this->originalOwned), pos);
-    doc->unlock();
+    if (doc) {
+        doc->unlock();
+    }
 
     this->page->fireElementChanged(this->recognized);
     this->page->fireElementChanged(original);
@@ -42,14 +46,16 @@ auto RecognizerUndoAction::undo(Control* control) -> bool {
 }
 
 auto RecognizerUndoAction::redo(Control* control) -> bool {
-    Element::Index pos = 0;
-
-    Document* doc = control->getDocument();
-    doc->lock();
+    Document* doc = control ? control->getDocument() : nullptr;
+    if (doc) {
+        doc->lock();
+    }
     auto [owned, posi] = this->layer->removeElement(original);
     this->originalOwned = std::move(owned);
-    this->layer->insertElement(std::move(this->recognizedOwned), pos);
-    doc->unlock();
+    this->layer->insertElement(std::move(this->recognizedOwned), posi);
+    if (doc) {
+        doc->unlock();
+    }
 
     this->page->fireElementChanged(original);
     this->page->fireElementChanged(this->recognized);

@@ -5,6 +5,7 @@
 #include <glib.h>  // for g_error
 
 #include "control/NavigationHistory.h"    // for NavigationHistory
+#include "control/actions/ActionDatabase.h"
 #include "control/zoom/ZoomControl.h"     // for ZoomControl
 #include "gui/MainWindow.h"               // for MainWindow
 #include "gui/XournalView.h"              // for XournalView
@@ -147,4 +148,32 @@ void ScrollHandler::pageChanged(size_t page) {
         return;
     }
     jumpToPage(page - 1);
+}
+
+auto ScrollHandler::isHorizontalScrollLocked() const -> bool {
+    return this->horizontalScrollLocked;
+}
+
+void ScrollHandler::setHorizontalScrollLocked(bool locked) {
+    if (this->horizontalScrollLocked == locked) {
+        return;
+    }
+    this->horizontalScrollLocked = locked;
+    if (this->control && this->control->getActionDatabase()) {
+        this->control->getActionDatabase()->setActionState(Action::LOCK_HORIZONTAL_SCROLL, locked);
+    }
+}
+
+auto ScrollHandler::isScrollLocked() const -> bool {
+    return this->scrollLocked;
+}
+
+void ScrollHandler::setScrollLocked(bool locked) {
+    if (this->scrollLocked == locked) {
+        return;
+    }
+    this->scrollLocked = locked;
+    if (this->control && this->control->getActionDatabase()) {
+        this->control->getActionDatabase()->setActionState(Action::LOCK_SCROLL, locked);
+    }
 }

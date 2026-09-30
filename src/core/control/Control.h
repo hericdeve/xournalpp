@@ -36,6 +36,8 @@
 
 #include "ClipboardHandler.h"  // for ClipboardListener
 #include "ToolHandler.h"       // for ToolListener
+#include "control/presets/PenPresetManager.h"
+#include "control/shaperecognizer/custom/CustomShapeManager.h"
 #include "filesystem.h"        // for path
 
 class LoadHandler;
@@ -308,6 +310,8 @@ public:
     MetadataManager* getMetadataManager() const;
     Settings* getSettings() const;
     ToolHandler* getToolHandler() const;
+    PenPresetManager* getPenPresetManager() const;
+    xoj::circuit::CustomShapeManager* getCustomShapeManager() const;
     ZoomControl* getZoomControl() const;
     Document* getDocument() const;
     UndoRedoHandler* getUndoRedoHandler() const;
@@ -499,6 +503,8 @@ private:
     SearchBar* searchBar = nullptr;
 
     ToolHandler* toolHandler;
+    std::unique_ptr<PenPresetManager> penPresetManager;
+    std::unique_ptr<xoj::circuit::CustomShapeManager> customShapeManager;
 
     ScrollHandler* scrollHandler;
 

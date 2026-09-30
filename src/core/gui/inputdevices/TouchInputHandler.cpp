@@ -133,6 +133,15 @@ void TouchInputHandler::scrollMotion(InputEvent const& event) {
 
 void TouchInputHandler::zoomStart() {
     this->zooming = true;
+    auto center = (this->priLastAbs + this->secLastAbs) / 2.0;
+    this->lastZoomScrollCenter = center;
+
+    ZoomControl* zoomControl = this->inputContext->getView()->getControl()->getZoomControl();
+    if (zoomControl->isZoomLocked()) {
+        this->startZoomReady = false;
+        return;
+    }
+
     this->startZoomDistance = this->priLastAbs.distance(this->secLastAbs);
 
     if (this->startZoomDistance == 0.0) {
@@ -143,18 +152,11 @@ void TouchInputHandler::zoomStart() {
     // hasn't changed enough).
     this->canBlockZoom = true;
 
-    ZoomControl* zoomControl = this->inputContext->getView()->getControl()->getZoomControl();
-
     // Disable zoom fit as we are zooming currently
     // TODO(fabian): this should happen internally!!!
     if (zoomControl->isZoomFitMode()) {
         zoomControl->setZoomFitMode(false);
     }
-
-    // use screen pixel coordinates for the zoom center
-    // as relative coordinates depend on the changing zoom level
-    auto center = (this->priLastAbs + this->secLastAbs) / 2.0;
-    this->lastZoomScrollCenter = center;
 
     zoomControl->startZoomSequence(center);
 
@@ -166,6 +168,16 @@ void TouchInputHandler::zoomMotion(InputEvent const& event) {
         this->priLastAbs = event.absolute;
     } else {
         this->secLastAbs = event.absolute;
+    }
+
+    ZoomControl* zoomControl = this->inputContext->getView()->getControl()->getZoomControl();
+    const auto center = (this->priLastAbs + this->secLastAbs) / 2;
+
+    if (zoomControl->isZoomLocked()) {
+        auto offset = center - lastZoomScrollCenter;
+        lastZoomScrollCenter = center;
+        inputContext->getView()->getLayout()->scrollRelative(-offset.x, -offset.y);
+        return;
     }
 
     double distance = this->priLastAbs.distance(this->secLastAbs);
@@ -183,8 +195,6 @@ void TouchInputHandler::zoomMotion(InputEvent const& event) {
         this->canBlockZoom = false;
     }
 
-    ZoomControl* zoomControl = this->inputContext->getView()->getControl()->getZoomControl();
-    const auto center = (this->priLastAbs + this->secLastAbs) / 2;
     zoomControl->zoomSequenceChange(zoom, true, center - lastZoomScrollCenter);
     lastZoomScrollCenter = center;
 }
@@ -192,7 +202,9 @@ void TouchInputHandler::zoomMotion(InputEvent const& event) {
 void TouchInputHandler::zoomEnd() {
     this->zooming = false;
     ZoomControl* zoomControl = this->inputContext->getView()->getControl()->getZoomControl();
-    zoomControl->endZoomSequence();
+    if (!zoomControl->isZoomLocked()) {
+        zoomControl->endZoomSequence();
+    }
 }
 
 void TouchInputHandler::onBlock() {

@@ -80,6 +80,9 @@ TEST(SettingsTest, testReadWrite) {
         EXPECT_EQ(settings.isFloatingToolbarHorizontal(), loaded.isFloatingToolbarHorizontal());            // bool
         EXPECT_EQ(settings.getFloatingToolbarX(), loaded.getFloatingToolbarX());                            // int
         EXPECT_EQ(settings.getFloatingToolbarY(), loaded.getFloatingToolbarY());                            // int
+        EXPECT_EQ(settings.getDrawAndHoldEnabled(), loaded.getDrawAndHoldEnabled());                        // bool
+        EXPECT_EQ(settings.getDrawAndHoldTimeout(), loaded.getDrawAndHoldTimeout());                        // int
+        EXPECT_EQ(settings.getDrawAndHoldResizeEnabled(), loaded.getDrawAndHoldResizeEnabled());            // bool
         EXPECT_EQ(settings.getSidebarSelectedTab(), loaded.getSidebarSelectedTab());                        // unsigned int
         EXPECT_EQ(settings.getFont().getName(), loaded.getFont().getName());                                // Font
         EXPECT_EQ(settings.getFont().getSize(), loaded.getFont().getSize());                                // Font
@@ -130,4 +133,67 @@ TEST(SettingsTest, testFloatingToolbarSettingsDefaults) {
     EXPECT_TRUE(settings.isFloatingToolbarHorizontal());
     EXPECT_EQ(settings.getFloatingToolbarX(), 200);
     EXPECT_EQ(settings.getFloatingToolbarY(), 350);
+}
+
+TEST(SettingsTest, testDrawAndHoldSettingsDefaultsAndPersistence) {
+    Settings settings{"non-existing-file-path"};
+    EXPECT_TRUE(settings.getDrawAndHoldEnabled());
+    EXPECT_EQ(settings.getDrawAndHoldTimeout(), 450);
+    EXPECT_TRUE(settings.getDrawAndHoldResizeEnabled());
+
+    settings.setDrawAndHoldEnabled(false);
+    settings.setDrawAndHoldTimeout(600);
+    settings.setDrawAndHoldResizeEnabled(false);
+
+    EXPECT_FALSE(settings.getDrawAndHoldEnabled());
+    EXPECT_EQ(settings.getDrawAndHoldTimeout(), 600);
+    EXPECT_FALSE(settings.getDrawAndHoldResizeEnabled());
+}
+
+TEST(SettingsTest, testPenPresetsDefaultsAndPersistence) {
+    Settings settings{"non-existing-file-path"};
+    const auto& presets = settings.getPenPresets();
+    ASSERT_GE(presets.size(), 4UL);
+    EXPECT_EQ(presets[0].name, "Black Pen");
+    EXPECT_EQ(presets[0].toolType, TOOL_PEN);
+    EXPECT_EQ(presets[0].size, TOOL_SIZE_FINE);
+    EXPECT_EQ(presets[0].color, Color(0x000000));
+
+    EXPECT_EQ(presets[1].name, "Blue Pen");
+    EXPECT_EQ(presets[1].toolType, TOOL_PEN);
+    EXPECT_EQ(presets[1].color, Color(0x0055ff));
+
+    // Custom preset list
+    std::vector<PenPreset> customPresets;
+    customPresets.emplace_back("custom_1", "Green Drafting Pen", TOOL_PEN, TOOL_SIZE_VERY_FINE, Color(0x00aa00));
+    customPresets.emplace_back("custom_2", "Neon Pink Highlighter", TOOL_HIGHLIGHTER, TOOL_SIZE_THICK, Color(0xff0088));
+    settings.setPenPresets(customPresets);
+
+    EXPECT_EQ(settings.getPenPresets().size(), 2UL);
+    EXPECT_EQ(settings.getPenPresets()[0].name, "Green Drafting Pen");
+    EXPECT_EQ(settings.getPenPresets()[0].size, TOOL_SIZE_VERY_FINE);
+    EXPECT_EQ(settings.getPenPresets()[0].color, Color(0x00aa00));
+    EXPECT_EQ(settings.getPenPresets()[1].name, "Neon Pink Highlighter");
+    EXPECT_EQ(settings.getPenPresets()[1].toolType, TOOL_HIGHLIGHTER);
+    EXPECT_EQ(settings.getPenPresets()[1].size, TOOL_SIZE_THICK);
+    EXPECT_EQ(settings.getPenPresets()[1].color, Color(0xff0088));
+
+    // Save and reload test
+    auto outPath = fs::temp_directory_path() / "xopp_preset_settings_test.xml";
+    Settings settingsToSave{outPath};
+    settingsToSave.setPenPresets(customPresets);
+    settingsToSave.save();
+
+    Settings loaded{outPath};
+    loaded.load();
+    ASSERT_EQ(loaded.getPenPresets().size(), 2UL);
+    EXPECT_EQ(loaded.getPenPresets()[0].name, "Green Drafting Pen");
+    EXPECT_EQ(loaded.getPenPresets()[0].size, TOOL_SIZE_VERY_FINE);
+    EXPECT_EQ(loaded.getPenPresets()[0].color, Color(0x00aa00));
+    EXPECT_EQ(loaded.getPenPresets()[1].name, "Neon Pink Highlighter");
+    EXPECT_EQ(loaded.getPenPresets()[1].toolType, TOOL_HIGHLIGHTER);
+    EXPECT_EQ(loaded.getPenPresets()[1].size, TOOL_SIZE_THICK);
+    EXPECT_EQ(loaded.getPenPresets()[1].color, Color(0xff0088));
+
+    fs::remove(outPath);
 }

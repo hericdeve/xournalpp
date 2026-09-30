@@ -35,10 +35,14 @@ auto InsertUndoAction::getText() -> std::string {
 }
 
 auto InsertUndoAction::undo(Control* control) -> bool {
-    Document* doc = control->getDocument();
-    doc->lock();
+    Document* doc = control ? control->getDocument() : nullptr;
+    if (doc) {
+        doc->lock();
+    }
     this->elementOwn = this->layer->removeElement(this->element).e;
-    doc->unlock();
+    if (doc) {
+        doc->unlock();
+    }
 
     this->page->fireElementChanged(this->element);
 
@@ -48,10 +52,14 @@ auto InsertUndoAction::undo(Control* control) -> bool {
 }
 
 auto InsertUndoAction::redo(Control* control) -> bool {
-    Document* doc = control->getDocument();
-    doc->lock();
+    Document* doc = control ? control->getDocument() : nullptr;
+    if (doc) {
+        doc->lock();
+    }
     this->layer->addElement(std::move(this->elementOwn));
-    doc->unlock();
+    if (doc) {
+        doc->unlock();
+    }
 
     this->page->fireElementChanged(this->element);
 

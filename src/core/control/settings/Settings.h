@@ -26,6 +26,7 @@
 
 #include "control/tools/StrokeStabilizerEnum.h"  // for AveragingMethod, Pre...
 #include "model/Font.h"                          // for XojFont
+#include "model/PenPreset.h"
 #include "util/Color.h"                          // for Color
 
 #include "LatexSettings.h"         // for LatexSettings
@@ -127,6 +128,9 @@ private:
 
     void saveButtonConfig();
     void loadButtonConfig();
+
+    void savePenPresets();
+    void loadPenPresets();
 
 public:
     // View Mode
@@ -555,6 +559,42 @@ public:
      * Get TrySelectOnStrokeFilter enabled
      */
     bool getTrySelectOnStrokeFiltered() const;
+
+    /**
+     * Set Draw and Hold shape recognition enabled
+     */
+    void setDrawAndHoldEnabled(bool enabled);
+
+    /**
+     * Get Draw and Hold shape recognition enabled
+     */
+    bool getDrawAndHoldEnabled() const;
+
+    /**
+     * Set Draw and Hold timeout (in ms)
+     */
+    void setDrawAndHoldTimeout(int timeout);
+
+    /**
+     * Get Draw and Hold timeout (in ms)
+     */
+    int getDrawAndHoldTimeout() const;
+
+    /**
+     * Set Draw and Hold shape resize on hold enabled
+     */
+    void setDrawAndHoldResizeEnabled(bool enabled);
+
+    /**
+     * Get Draw and Hold shape resize on hold enabled
+     */
+    bool getDrawAndHoldResizeEnabled() const;
+
+    /**
+     * Pen Presets
+     */
+    const std::vector<PenPreset>& getPenPresets() const;
+    void setPenPresets(const std::vector<PenPreset>& presets);
 
     /**
      * Set snap recognized shapes enabled
@@ -1022,6 +1062,11 @@ private:
     std::array<std::unique_ptr<ButtonConfig>, BUTTON_COUNT> buttonConfig;
 
     /**
+     * Pen Presets
+     */
+    std::vector<PenPreset> penPresets;
+
+    /**
      * View-modes. Predefined: 0=default, 1=fullscreen, 2=presentation
      */
     ViewModeId activeViewMode;
@@ -1172,6 +1217,21 @@ private:
     bool strokeFilterEnabled{};
     bool doActionOnStrokeFiltered{};
     bool trySelectOnStrokeFiltered{};
+
+    /**
+     * Whether Draw and Hold shape recognition is enabled
+     */
+    bool drawAndHoldEnabled{true};
+
+    /**
+     * Dwell timeout for Draw and Hold shape recognition (in ms)
+     */
+    int drawAndHoldTimeout{450};
+
+    /**
+     * Whether resizing the recognized shape when holding/dragging after snap is enabled
+     */
+    bool drawAndHoldResizeEnabled{true};
 
     /**
      * Whether snapping for recognized shapes is enabled

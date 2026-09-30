@@ -30,7 +30,6 @@ FloatingCustomToolbar::FloatingCustomToolbar(MainWindow* win, GtkOverlay* overla
     GtkWidget* rootBox = gtk_box_new(orient, 0);
     this->container.reset(rootBox, xoj::util::adopt);
     gtk_widget_set_name(rootBox, "floatingToolbarContainer");
-    gtk_widget_add_css_class(rootBox, "osd");
     gtk_widget_add_css_class(rootBox, "floating-toolbar");
 
     // Inner GtkToolbar

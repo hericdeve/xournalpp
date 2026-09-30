@@ -14,7 +14,10 @@
 #include "control/UndoRedoController.h"
 #include "control/layer/LayerController.h"
 #include "control/settings/Settings.h"
+#include "control/presets/PenPresetManager.h"
 #include "control/zoom/ZoomControl.h"
+#include "gui/MainWindow.h"
+#include "gui/dialog/PresetNameDialog.h"
 #include "enums/Action.enum.h"
 #include "gui/MainWindow.h"
 #include "gui/SearchBar.h"
@@ -478,6 +481,97 @@ struct ActionProperties<Action::ZOOM> {
             zoomctrl->zoomSequenceChange(newZoom, false);
             zoomctrl->endZoomSequence();
         });
+    }
+};
+
+template <>
+struct ActionProperties<Action::LOCK_ZOOM> {
+    using state_type = bool;
+    static state_type initialState(Control* ctrl) { return ctrl->getZoomControl()->isZoomLocked(); }
+    static void callback(GSimpleAction* ga, GVariant* p, Control* ctrl) {
+        g_simple_action_set_state(ga, p);
+        bool locked = g_variant_get_boolean(p);
+        ctrl->getZoomControl()->setZoomLocked(locked);
+    }
+};
+
+template <>
+struct ActionProperties<Action::LOCK_HORIZONTAL_SCROLL> {
+    using state_type = bool;
+    static state_type initialState(Control* ctrl) { return ctrl->getScrollHandler()->isHorizontalScrollLocked(); }
+    static void callback(GSimpleAction* ga, GVariant* p, Control* ctrl) {
+        g_simple_action_set_state(ga, p);
+        bool locked = g_variant_get_boolean(p);
+        ctrl->getScrollHandler()->setHorizontalScrollLocked(locked);
+    }
+};
+
+template <>
+struct ActionProperties<Action::LOCK_SCROLL> {
+    using state_type = bool;
+    static state_type initialState(Control* ctrl) { return ctrl->getScrollHandler()->isScrollLocked(); }
+    static void callback(GSimpleAction* ga, GVariant* p, Control* ctrl) {
+        g_simple_action_set_state(ga, p);
+        bool locked = g_variant_get_boolean(p);
+        ctrl->getScrollHandler()->setScrollLocked(locked);
+    }
+};
+
+template <>
+struct ActionProperties<Action::PEN_PRESETS> {
+    static void callback(GSimpleAction*, GVariant*, Control*) {}
+};
+
+template <>
+struct ActionProperties<Action::SAVE_PEN_PRESET> {
+    static void callback(GSimpleAction*, GVariant*, Control* ctrl) {
+        if (!ctrl || !ctrl->getPenPresetManager()) return;
+        auto* mgr = ctrl->getPenPresetManager();
+        auto preset = mgr->createPresetFromCurrent(_("Custom Preset"));
+
+        auto popup = std::make_unique<xoj::popup::PopupWindowWrapper<PresetNameDialog>>(
+                ctrl->getGladeSearchPath(), preset.name, preset, [mgr, preset](const std::string& name) {
+                    PenPreset p = preset;
+                    p.name = name;
+                    mgr->addPreset(p);
+                });
+        popup->show(ctrl->getGtkWindow());
+        popup.release();
+    }
+};
+
+template <>
+struct ActionProperties<Action::SELECT_PEN_PRESET_1> {
+    static void callback(GSimpleAction*, GVariant*, Control* ctrl) {
+        if (ctrl && ctrl->getPenPresetManager()) ctrl->getPenPresetManager()->applyPreset(0);
+    }
+};
+
+template <>
+struct ActionProperties<Action::SELECT_PEN_PRESET_2> {
+    static void callback(GSimpleAction*, GVariant*, Control* ctrl) {
+        if (ctrl && ctrl->getPenPresetManager()) ctrl->getPenPresetManager()->applyPreset(1);
+    }
+};
+
+template <>
+struct ActionProperties<Action::SELECT_PEN_PRESET_3> {
+    static void callback(GSimpleAction*, GVariant*, Control* ctrl) {
+        if (ctrl && ctrl->getPenPresetManager()) ctrl->getPenPresetManager()->applyPreset(2);
+    }
+};
+
+template <>
+struct ActionProperties<Action::SELECT_PEN_PRESET_4> {
+    static void callback(GSimpleAction*, GVariant*, Control* ctrl) {
+        if (ctrl && ctrl->getPenPresetManager()) ctrl->getPenPresetManager()->applyPreset(3);
+    }
+};
+
+template <>
+struct ActionProperties<Action::SELECT_PEN_PRESET_5> {
+    static void callback(GSimpleAction*, GVariant*, Control* ctrl) {
+        if (ctrl && ctrl->getPenPresetManager()) ctrl->getPenPresetManager()->applyPreset(4);
     }
 };
 

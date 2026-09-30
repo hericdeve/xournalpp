@@ -78,6 +78,18 @@ enum class Action : size_t {
     ZOOM_100,
     ZOOM_FIT,
     ZOOM,  ///< Action whose state is the current zoom value
+    LOCK_ZOOM,
+    LOCK_HORIZONTAL_SCROLL,
+    LOCK_SCROLL,
+
+    // Presets
+    PEN_PRESETS,
+    SAVE_PEN_PRESET,
+    SELECT_PEN_PRESET_1,
+    SELECT_PEN_PRESET_2,
+    SELECT_PEN_PRESET_3,
+    SELECT_PEN_PRESET_4,
+    SELECT_PEN_PRESET_5,
 
     // Menu navigation
     GOTO_FIRST,

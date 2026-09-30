@@ -45,8 +45,9 @@ void StrokeToolFilledView::on(StrokeToolView::AddPointRequest, const Point& p) {
     this->parent->flagDirtyRegion(rg);
 }
 
-void StrokeToolFilledView::on(StrokeToolView::StrokeReplacementRequest, const Stroke& newStroke) {
-    StrokeToolView::on(STROKE_REPLACEMENT_REQUEST, newStroke);
+void StrokeToolFilledView::on(StrokeToolView::StrokeReplacementRequest, const Stroke& newStroke,
+                                const Range& dirtyRange) {
+    StrokeToolView::on(STROKE_REPLACEMENT_REQUEST, newStroke, dirtyRange);
     this->filling.contour = this->pointBuffer;
     if (!this->pointBuffer.empty()) {
         const Point& fp = this->pointBuffer.front();

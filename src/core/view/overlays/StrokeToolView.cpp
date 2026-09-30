@@ -102,11 +102,12 @@ void StrokeToolView::deleteOn(StrokeToolView::CancellationRequest, const Range& 
     this->parent->drawAndDeleteToolView(this, rg);
 }
 
-void StrokeToolView::on(StrokeToolView::StrokeReplacementRequest, const Stroke& newStroke) {
+void StrokeToolView::on(StrokeToolView::StrokeReplacementRequest, const Stroke& newStroke, const Range& dirtyRange) {
     if (this->mask.isInitialized()) {
         // only wipe mask it actually exists (the view has already been drawn at least once)
         this->mask.wipe();
     }
+    this->singleDot = false;
     this->pointBuffer = newStroke.getPointVector();
     this->dashOffset = 0;
     this->strokeWidth = newStroke.getWidth();
@@ -114,6 +115,9 @@ void StrokeToolView::on(StrokeToolView::StrokeReplacementRequest, const Stroke& 
     xoj_assert(this->lineStyle == newStroke.getLineStyle());
     xoj_assert(this->cairoOp ==
                (newStroke.getToolType() == StrokeTool::HIGHLIGHTER ? CAIRO_OPERATOR_MULTIPLY : CAIRO_OPERATOR_OVER));
+    if (dirtyRange.isValid()) {
+        this->parent->flagDirtyRegion(dirtyRange);
+    }
 }
 
 void StrokeToolView::deleteOn(StrokeToolView::FinalizationRequest, const Range& rg) {

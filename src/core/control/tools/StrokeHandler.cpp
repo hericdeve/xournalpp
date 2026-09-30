@@ -16,6 +16,7 @@
 #include "control/settings/Settings.h"                      // for Settings
 #include "control/settings/SettingsEnums.h"                 // for EmptyLastPageAppendType
 #include "control/shaperecognizer/ShapeRecognizer.h"        // for ShapeRecognizer
+#include "control/shaperecognizer/custom/CustomShapeManager.h"
 #include "control/tools/InputHandler.h"                     // for InputHandler::P...
 #include "control/tools/SnapToGridInputHandler.h"           // for SnapToGridInput...
 #include "gui/inputdevices/PositionInputData.h"             // for PositionInputData
@@ -32,6 +33,7 @@
 #include "util/DispatchPool.h"                              // for DispatchPool
 #include "util/Range.h"                                     // for Range
 #include "util/Rectangle.h"                                 // for Rectangle, util
+#include "util/glib_casts.h"                                // for wrap_for_once_v
 #include "view/overlays/StrokeToolFilledHighlighterView.h"  // for StrokeToolFilledHighlighterView
 #include "view/overlays/StrokeToolFilledView.h"             // for StrokeToolFilledView
 #include "view/overlays/StrokeToolView.h"                   // for StrokeToolView
@@ -48,7 +50,9 @@ StrokeHandler::StrokeHandler(Control* control, const PageRef& page):
     snappingHandler.setPageRef(page);
 }
 
-StrokeHandler::~StrokeHandler() = default;
+StrokeHandler::~StrokeHandler() {
+    cancelHoldTimer();
+}
 
 auto StrokeHandler::onKeyPressEvent(const KeyEvent&) -> bool { return false; }
 auto StrokeHandler::onKeyReleaseEvent(const KeyEvent&) -> bool { return false; }
@@ -64,6 +68,28 @@ auto StrokeHandler::onMotionNotifyEvent(const PositionInputData& pos, double zoo
          * Ignore those events
          */
         return true;
+    }
+
+    Point currentPoint(pos.x / zoom, pos.y / zoom);
+
+    if (this->isHoldShapeRecognized) {
+        handleHoldMotion(currentPoint);
+        return true;
+    }
+
+    // Normal drawing mode: track stationary hold
+    ToolHandler* h = control->getToolHandler();
+    Settings* settings = control->getSettings();
+    bool canDrawAndHold = settings->getDrawAndHoldEnabled() &&
+                          (h->getToolType() == TOOL_PEN || h->getToolType() == TOOL_HIGHLIGHTER) &&
+                          (h->getDrawingType() == DRAWING_TYPE_DEFAULT || h->getDrawingType() == DRAWING_TYPE_SHAPE_RECOGNIZER);
+
+    if (canDrawAndHold) {
+        if (currentPoint.lineLengthTo(this->holdAnchorPoint) > 8.0) {
+            this->holdAnchorPoint = currentPoint;
+            this->holdTimer = g_timeout_add(settings->getDrawAndHoldTimeout(),
+                                            xoj::util::wrap_for_once_v<onHoldTimeout>, this);
+        }
     }
 
     stabilizer->processEvent(pos);
@@ -124,11 +150,178 @@ void StrokeHandler::drawSegmentTo(const Point& point) {
     return;
 }
 
+void StrokeHandler::cancelHoldTimer() {
+    this->holdTimer.cancel();
+}
+
+auto StrokeHandler::onHoldTimeout(StrokeHandler* self) -> bool {
+    self->holdTimer.consume();
+    self->triggerHoldShapeRecognition();
+    return false;
+}
+
+void StrokeHandler::triggerHoldShapeRecognition() {
+    if (!this->stroke || this->isHoldShapeRecognized) {
+        return;
+    }
+
+    if (this->stroke->getPointCount() < 4) {
+        return;
+    }
+
+    ShapeRecognizer reco;
+    auto recognized = reco.recognizePatterns(this->stroke.get(), this->control->getSettings()->getStrokeRecognizerMinSize());
+
+    bool isCircuit = false;
+    const xoj::circuit::CircuitTemplate* circuitTpl = nullptr;
+    Point cTermStart{0.0, 0.0};
+    Point cTermEnd{0.0, 0.0};
+
+    if (!recognized && this->control->getCustomShapeManager()) {
+        xoj::circuit::CircuitRecognitionResult cRes;
+        recognized = this->control->getCustomShapeManager()->recognize(this->stroke.get(), &cRes);
+        if (recognized) {
+            isCircuit = true;
+            circuitTpl = cRes.matchedTemplate;
+            cTermStart = cRes.terminalStart;
+            cTermEnd = cRes.terminalEnd;
+        }
+    }
+
+    if (!recognized) {
+        return;
+    }
+
+    recognized->setWidth(this->stroke->hasPressure() ? this->stroke->getAvgPressure() : this->stroke->getWidth());
+
+    // Snapping if enabled
+    if (!isCircuit && this->control->getSettings()->getSnapRecognizedShapesEnabled()) {
+        Rectangle<double> oldSnappedBounds = recognized->getSnappedBounds();
+        Point topLeft = Point(oldSnappedBounds.x, oldSnappedBounds.y);
+        Point topLeftSnapped = snappingHandler.snapToGrid(topLeft, false);
+
+        recognized->move(topLeftSnapped.x - topLeft.x, topLeftSnapped.y - topLeft.y);
+        Rectangle<double> snappedBounds = recognized->getSnappedBounds();
+        Point belowRight = Point(snappedBounds.x + snappedBounds.width, snappedBounds.y + snappedBounds.height);
+        Point belowRightSnapped = snappingHandler.snapToGrid(belowRight, false);
+
+        double fx = (std::abs(snappedBounds.width) > std::numeric_limits<double>::epsilon()) ?
+                            (belowRightSnapped.x - topLeftSnapped.x) / snappedBounds.width :
+                            1;
+        double fy = (std::abs(snappedBounds.height) > std::numeric_limits<double>::epsilon()) ?
+                            (belowRightSnapped.y - topLeftSnapped.y) / snappedBounds.height :
+                            1;
+        bool restoreLineWidth = this->control->getSettings()->getRestoreLineWidthEnabled();
+        recognized->scale(topLeftSnapped.x, topLeftSnapped.y, fx, fy, 0, restoreLineWidth);
+    }
+
+    this->isHoldShapeRecognized = true;
+    this->originalStroke = this->stroke->cloneStroke();
+    this->baseRecognizedStroke = std::move(recognized);
+    this->currentRecognizedStroke = this->baseRecognizedStroke->cloneStroke();
+    this->holdSnapPoint = this->holdAnchorPoint;
+
+    // Determine shape type and center
+    if (isCircuit) {
+        this->recognizedType = RecognizedShapeType::Circuit;
+        this->recognizedCircuitTemplate = circuitTpl;
+        this->circuitTerminalStart = cTermStart;
+        this->circuitTerminalEnd = cTermEnd;
+    } else {
+        this->recognizedCircuitTemplate = nullptr;
+        const auto& pts = this->baseRecognizedStroke->getPointVector();
+        if (pts.size() == 2) {
+            this->recognizedType = RecognizedShapeType::Line;
+            this->shapeCenter = pts.front();
+        } else if (pts.size() >= 24 && pts.front().lineLengthTo(pts.back()) < 1.0) {
+            this->recognizedType = RecognizedShapeType::Circle;
+            Rectangle<double> bbox = this->baseRecognizedStroke->getBoundingBox();
+            this->shapeCenter = Point(bbox.x + bbox.width / 2.0, bbox.y + bbox.height / 2.0);
+        } else {
+            this->recognizedType = RecognizedShapeType::Polygon;
+            Rectangle<double> bbox = this->baseRecognizedStroke->getBoundingBox();
+            this->shapeCenter = Point(bbox.x + bbox.width / 2.0, bbox.y + bbox.height / 2.0);
+        }
+    }
+
+    Range dirtyRange = Range(this->stroke->getBoundingBox()).unite(Range(this->currentRecognizedStroke->getBoundingBox()));
+    dirtyRange.addPadding(this->stroke->getWidth() + 2.0);
+    this->currentOverlayRange = dirtyRange;
+
+    this->viewPool->dispatch(xoj::view::StrokeToolView::STROKE_REPLACEMENT_REQUEST, *this->currentRecognizedStroke, dirtyRange);
+}
+
+void StrokeHandler::handleHoldMotion(const Point& currentPoint) {
+    if (!this->isHoldShapeRecognized || !this->baseRecognizedStroke) {
+        return;
+    }
+
+    if (!this->control->getSettings()->getDrawAndHoldResizeEnabled()) {
+        return;
+    }
+
+    auto updated = this->baseRecognizedStroke->cloneStroke();
+
+    if (this->recognizedType == RecognizedShapeType::Circuit && this->recognizedCircuitTemplate) {
+        // Circuit: end terminal tracks currentPoint with dynamic snapping & lead stretching
+        auto customMgr = this->control->getCustomShapeManager();
+        if (customMgr) {
+            auto snappedCircuit = customMgr->snapShape(this->recognizedCircuitTemplate, this->circuitTerminalStart,
+                                                      currentPoint, this->baseRecognizedStroke.get(), true, &this->snappingHandler);
+            if (snappedCircuit) {
+                updated = std::move(snappedCircuit);
+            }
+        }
+    } else if (this->recognizedType == RecognizedShapeType::Line) {
+        // Line: start point is fixed at p0, end point tracks currentPoint
+        const auto& basePts = this->baseRecognizedStroke->getPointVector();
+        if (basePts.size() == 2) {
+            Point p0 = basePts.front();
+            Point p1 = snappingHandler.snap(currentPoint, p0, false);
+            auto newStroke = std::make_unique<Stroke>();
+            newStroke->applyStyleFrom(this->baseRecognizedStroke.get());
+            newStroke->addPoint(p0);
+            newStroke->addPoint(p1);
+            updated = std::move(newStroke);
+        }
+    } else {
+        // Circle / Polygon: scale relative to center based on distance ratio from snap point
+        double initialDist = this->holdSnapPoint.lineLengthTo(this->shapeCenter);
+        double currentDist = currentPoint.lineLengthTo(this->shapeCenter);
+
+        if (initialDist > 5.0 && currentDist > 5.0) {
+            double scale = currentDist / initialDist;
+            if (scale > 0.05 && scale < 20.0) {
+                bool restoreLineWidth = this->control->getSettings()->getRestoreLineWidthEnabled();
+                updated->scale(this->shapeCenter.x, this->shapeCenter.y, scale, scale, 0, restoreLineWidth);
+            }
+        }
+    }
+
+    Range oldBbox(this->currentRecognizedStroke->getBoundingBox());
+    Range newBbox(updated->getBoundingBox());
+    Range dirtyRange = oldBbox.unite(newBbox).unite(this->currentOverlayRange);
+    dirtyRange.addPadding(updated->getWidth() + 2.0);
+    this->currentOverlayRange = Range(updated->getBoundingBox());
+    this->currentOverlayRange.addPadding(updated->getWidth() + 2.0);
+
+    this->currentRecognizedStroke = std::move(updated);
+    this->viewPool->dispatch(xoj::view::StrokeToolView::STROKE_REPLACEMENT_REQUEST, *this->currentRecognizedStroke, dirtyRange);
+}
+
 void StrokeHandler::onSequenceCancelEvent() {
+    cancelHoldTimer();
     if (this->stroke) {
-        this->viewPool->dispatchAndClear(xoj::view::StrokeToolView::CANCELLATION_REQUEST,
-                                         Range(this->stroke->getBoundingBox()));
+        Range r(this->stroke->getBoundingBox());
+        if (this->currentRecognizedStroke) {
+            r = r.unite(Range(this->currentRecognizedStroke->getBoundingBox()));
+        }
+        r.addPadding(this->stroke->getWidth() + 2.0);
+        this->viewPool->dispatchAndClear(xoj::view::StrokeToolView::CANCELLATION_REQUEST, r);
         stroke.reset();
+        currentRecognizedStroke.reset();
+        baseRecognizedStroke.reset();
+        originalStroke.reset();
     }
 }
 
@@ -161,9 +354,52 @@ void StrokeHandler::finalizeStroke(double pressure) {
 }
 
 void StrokeHandler::onButtonReleaseEvent(const PositionInputData& pos, double zoom) {
+    cancelHoldTimer();
     if (!stroke) {
         return;
     }
+
+    if (this->isHoldShapeRecognized && this->currentRecognizedStroke) {
+        Layer* layer = page->getSelectedLayer();
+        UndoRedoHandler* undo = control->getUndoRedoHandler();
+        auto recognizedPtr = this->currentRecognizedStroke.get();
+        auto originalPtr = this->originalStroke.get();
+
+        undo->addUndoAction(std::make_unique<InsertUndoAction>(page, layer, originalPtr));
+        undo->addUndoAction(std::make_unique<RecognizerUndoAction>(page, layer, std::move(this->originalStroke), recognizedPtr));
+
+        Document* doc = control->getDocument();
+        doc->lock();
+        layer->addElement(std::move(this->currentRecognizedStroke));
+        doc->unlock();
+
+        Range range = Range(recognizedPtr->getBoundingBox()).unite(Range(originalPtr->getBoundingBox())).unite(this->currentOverlayRange);
+        range.addPadding(recognizedPtr->getWidth() + 2.0);
+
+        this->viewPool->dispatch(xoj::view::StrokeToolView::STROKE_REPLACEMENT_REQUEST, *recognizedPtr, range);
+        this->viewPool->dispatchAndClear(xoj::view::StrokeToolView::FINALIZATION_REQUEST, range);
+        page->fireElementChanged(recognizedPtr);
+
+        Settings* settings = control->getSettings();
+        if (settings->getEmptyLastPageAppend() == EmptyLastPageAppendType::OnDrawOfLastPage) {
+            auto* doc = control->getDocument();
+            doc->lock_shared();
+            auto pdfPageCount = doc->getPdfPageCount();
+            auto lastPage = doc->getPageCount() - 1;
+            doc->unlock_shared();
+            if (pdfPageCount == 0) {
+                auto currentPage = control->getCurrentPageNo();
+                if (currentPage == lastPage) {
+                    control->insertNewPage(currentPage + 1, true);
+                }
+            }
+        }
+
+        stroke.reset();
+        baseRecognizedStroke.reset();
+        return;
+    }
+
     finalizeStroke(pos.pressure);
 
     Layer* layer = page->getSelectedLayer();
@@ -191,6 +427,10 @@ void StrokeHandler::onButtonReleaseEvent(const PositionInputData& pos, double zo
         ShapeRecognizer reco;
 
         auto recognized = reco.recognizePatterns(stroke.get(), control->getSettings()->getStrokeRecognizerMinSize());
+
+        if (!recognized && control->getCustomShapeManager()) {
+            recognized = control->getCustomShapeManager()->recognize(stroke.get());
+        }
 
         if (recognized) {
             // strokeRecognizerDetected handles the repainting and the deletion of the views.
@@ -232,7 +472,8 @@ void StrokeHandler::strokeRecognizerDetected(std::unique_ptr<Stroke> recognized,
         double fy = (std::abs(snappedBounds.height) > std::numeric_limits<double>::epsilon()) ?
                             (belowRightSnapped.y - topLeftSnapped.y) / snappedBounds.height :
                             1;
-        recognized->scale(topLeftSnapped.x, topLeftSnapped.y, fx, fy, 0, false);
+        bool restoreLineWidth = control->getSettings()->getRestoreLineWidthEnabled();
+        recognized->scale(topLeftSnapped.x, topLeftSnapped.y, fx, fy, 0, restoreLineWidth);
     }
 
     UndoRedoHandler* undo = control->getUndoRedoHandler();
@@ -258,10 +499,30 @@ void StrokeHandler::strokeRecognizerDetected(std::unique_ptr<Stroke> recognized,
 void StrokeHandler::onButtonPressEvent(const PositionInputData& pos, double zoom) {
     xoj_assert(!stroke);
 
+    cancelHoldTimer();
+    this->isHoldShapeRecognized = false;
+    this->recognizedType = RecognizedShapeType::None;
+    this->originalStroke.reset();
+    this->baseRecognizedStroke.reset();
+    this->currentRecognizedStroke.reset();
+    this->currentOverlayRange = Range();
+
     this->buttonDownPoint.x = pos.x / zoom;
     this->buttonDownPoint.y = pos.y / zoom;
+    this->holdAnchorPoint = this->buttonDownPoint;
 
     stroke = createStroke(this->control);
+
+    ToolHandler* h = control->getToolHandler();
+    Settings* settings = control->getSettings();
+    bool canDrawAndHold = settings->getDrawAndHoldEnabled() &&
+                          (h->getToolType() == TOOL_PEN || h->getToolType() == TOOL_HIGHLIGHTER) &&
+                          (h->getDrawingType() == DRAWING_TYPE_DEFAULT || h->getDrawingType() == DRAWING_TYPE_SHAPE_RECOGNIZER);
+
+    if (canDrawAndHold) {
+        this->holdTimer = g_timeout_add(settings->getDrawAndHoldTimeout(),
+                                        xoj::util::wrap_for_once_v<onHoldTimeout>, this);
+    }
 
     this->hasPressure = this->stroke->getToolType().isPressureSensitive() && pos.pressure != Point::NO_PRESSURE;
 

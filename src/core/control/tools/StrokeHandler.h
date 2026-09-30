@@ -17,6 +17,8 @@
 
 #include "model/PageRef.h"  // for PageRef
 #include "model/Point.h"    // for Point
+#include "util/Range.h"
+#include "util/raii/GSourceURef.h"
 
 #include "InputHandler.h"            // for InputHandler
 #include "SnapToGridInputHandler.h"  // for SnapToGridInputHandler
@@ -30,6 +32,10 @@ namespace xoj::util {
 template <class T>
 class DispatchPool;
 };
+
+namespace xoj::circuit {
+class CircuitTemplate;
+}
 
 namespace xoj::view {
 class OverlayView;
@@ -88,11 +94,34 @@ protected:
     /// Finalizes the stroke using the provided pressure as last point
     void finalizeStroke(double pressure);
 
+    /// Draw and Hold shape recognition helper methods
+    static auto onHoldTimeout(StrokeHandler* self) -> bool;
+    void cancelHoldTimer();
+    void triggerHoldShapeRecognition();
+    void handleHoldMotion(const Point& currentPoint);
+
+    enum class RecognizedShapeType { None, Line, Circle, Polygon, Circuit };
+
 protected:
     Point buttonDownPoint;  // used for tapSelect and filtering - never snapped to grid.
     SnapToGridInputHandler snappingHandler;
 
     bool hasPressure;
+
+    // Draw and Hold state
+    xoj::util::GSourceURef holdTimer;
+    Point holdAnchorPoint;
+    Point holdSnapPoint;
+    bool isHoldShapeRecognized{false};
+    RecognizedShapeType recognizedType{RecognizedShapeType::None};
+    const xoj::circuit::CircuitTemplate* recognizedCircuitTemplate{nullptr};
+    Point circuitTerminalStart{0.0, 0.0};
+    Point circuitTerminalEnd{0.0, 0.0};
+    std::unique_ptr<Stroke> originalStroke;
+    std::unique_ptr<Stroke> baseRecognizedStroke;
+    std::unique_ptr<Stroke> currentRecognizedStroke;
+    Range currentOverlayRange;
+    Point shapeCenter;
 
 private:
     /**

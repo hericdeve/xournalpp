@@ -10,6 +10,7 @@
 #include <glib-object.h>  // for G_CALLBACK, g_signal_connect
 
 #include "control/Control.h"            // for Control
+#include "control/ScrollHandler.h"      // for ScrollHandler
 #include "control/settings/Settings.h"  // for Settings
 #include "gui/LayoutMapper.h"           // for LayoutMapper, GridPosition
 #include "gui/PageView.h"               // for XojPageView
@@ -422,6 +423,16 @@ auto Layout::getCenteringPadding() const -> xoj::util::Point<int> {
 }
 
 void Layout::scrollRelative(double x, double y) {
+    auto* ctrl = this->view ? this->view->getControl() : nullptr;
+    auto* sh = ctrl ? ctrl->getScrollHandler() : nullptr;
+    if (sh) {
+        if (sh->isScrollLocked()) {
+            return;
+        }
+        if (sh->isHorizontalScrollLocked()) {
+            x = 0.0;
+        }
+    }
     scrollAbs(gtk_adjustment_get_value(scrollHandling->getHorizontal()) + x,
               gtk_adjustment_get_value(scrollHandling->getVertical()) + y);
 }
@@ -429,6 +440,17 @@ void Layout::scrollRelative(double x, double y) {
 void Layout::scrollAbs(double x, double y) {
     if (this->view->getControl()->getSettings()->isPresentationMode()) {
         return;
+    }
+
+    auto* ctrl = this->view ? this->view->getControl() : nullptr;
+    auto* sh = ctrl ? ctrl->getScrollHandler() : nullptr;
+    if (sh) {
+        if (sh->isScrollLocked()) {
+            return;
+        }
+        if (sh->isHorizontalScrollLocked()) {
+            x = gtk_adjustment_get_value(scrollHandling->getHorizontal());
+        }
     }
 
     // We block the horizontal callback to avoid calling updateVisibility() twice

@@ -57,9 +57,17 @@ public:
 
     bool isPageVisible(size_t page, int* visibleHeight = nullptr);
 
+    bool isHorizontalScrollLocked() const;
+    void setHorizontalScrollLocked(bool locked);
+
+    bool isScrollLocked() const;
+    void setScrollLocked(bool locked);
+
 public:
     void pageChanged(size_t page) override;
 
 private:
     Control* control = nullptr;
+    bool horizontalScrollLocked = false;
+    bool scrollLocked = false;
 };

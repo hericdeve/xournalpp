@@ -37,6 +37,8 @@
 #include "FontButton.h"                  // for FontButton
 #include "PluginPlaceholderLabel.h"      // for PluginPlaceholderLabel
 #include "PluginToolButton.h"            // for PluginToolButton
+#include "PenPresetsToolButton.h"
+#include "PenPresetsToolButton.h"
 #include "RecentDocumentsToolButton.h"   // for RecentDocumentsToolButton
 #include "SeparatorItem.h"
 #include "SpacerItem.h"
@@ -331,6 +333,11 @@ void ToolMenuHandler::initToolItems() {
     emplaceStockItem("ZOOM_IN", Cat::NAVIGATION, Action::ZOOM_IN, "zoom-in", _("Zoom in"));
     emplaceStockItemTgl("ZOOM_FIT", Cat::NAVIGATION, Action::ZOOM_FIT, "zoom-fit-best", _("Zoom fit to screen"));
     emplaceStockItem("ZOOM_100", Cat::NAVIGATION, Action::ZOOM_100, "zoom-original", _("Zoom to 100%"));
+    emplaceCustomItemTgl("LOCK_ZOOM", Cat::NAVIGATION, Action::LOCK_ZOOM, "lock-zoom", _("Lock Zoom"));
+    emplaceCustomItemTgl("LOCK_HORIZONTAL_SCROLL", Cat::NAVIGATION, Action::LOCK_HORIZONTAL_SCROLL,
+                         "lock-horizontal-scroll", _("Lock Horizontal Scrolling"));
+    emplaceCustomItemTgl("LOCK_SCROLL", Cat::NAVIGATION, Action::LOCK_SCROLL, "lock-scroll",
+                         _("Lock Scrolling"));
 
     /*
      * Menu Navigation
@@ -506,6 +513,17 @@ void ToolMenuHandler::initToolItems() {
     emplaceCustomItemWithTarget("THICK", Cat::TOOLS, Action::TOOL_SIZE, TOOL_SIZE_THICK, "thickness-thick", _("Thick"));
     emplaceCustomItemWithTarget("VERY_THICK", Cat::TOOLS, Action::TOOL_SIZE, TOOL_SIZE_VERY_THICK, "thickness-thicker",
                                 _("Very Thick"));
+
+    // Pen presets
+    emplaceItem<PenPresetsToolButton>(control, "PEN_PRESETS", Cat::TOOLS, iconName("pen-presets"), _("Pen Presets"));
+    emplaceCustomItem("SAVE_PEN_PRESET", Cat::TOOLS, Action::SAVE_PEN_PRESET, "preset-add", _("Save Pen Preset"));
+    for (size_t i = 1; i <= 5; ++i) {
+        std::string presetId = "SELECT_PEN_PRESET_" + std::to_string(i);
+        Action presetAction = static_cast<Action>(static_cast<int>(Action::SELECT_PEN_PRESET_1) + (i - 1));
+        std::string desc = _("Select Pen Preset ") + std::to_string(i);
+        std::string icon = "preset-" + std::to_string(i);
+        emplaceCustomItem(presetId.c_str(), Cat::TOOLS, presetAction, icon.c_str(), desc);
+    }
 
     emplaceItem<SeparatorItem>("SEPARATOR");
     emplaceItem<SpacerItem>("SPACER");

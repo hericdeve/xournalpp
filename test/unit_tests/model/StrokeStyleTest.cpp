@@ -12,6 +12,7 @@
 #include <config-test.h>
 #include <gtest/gtest.h>
 
+#include "model/Stroke.h"
 #include "model/StrokeStyle.h"
 
 namespace {
@@ -47,4 +48,19 @@ TEST(StrokeStyle, testFormatStyle) {
     LineStyle custLine;
     custLine.setDashes(std::vector<double>(custPattern, custPattern + 3));
     EXPECT_EQ(StrokeStyle::formatStyle(custLine), "cust: 0.01 -1.00 0.01");
+}
+
+TEST(StrokeTest, testScaleRestoreLineWidth) {
+    Stroke s;
+    s.setWidth(2.5);
+    s.addPoint(Point(10.0, 10.0));
+    s.addPoint(Point(30.0, 30.0));
+
+    // When restoreLineWidth is true, width should be preserved on scaling
+    s.scale(10.0, 10.0, 2.0, 2.0, 0, true);
+    EXPECT_DOUBLE_EQ(s.getWidth(), 2.5);
+
+    // When restoreLineWidth is false, width should scale proportionally
+    s.scale(10.0, 10.0, 2.0, 2.0, 0, false);
+    EXPECT_DOUBLE_EQ(s.getWidth(), 5.0);
 }
