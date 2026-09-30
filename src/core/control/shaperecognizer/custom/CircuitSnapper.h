@@ -12,7 +12,9 @@
 #pragma once
 
 #include <memory>
+#include <vector>
 
+#include "CircuitFeatureClassifier.h"
 #include "CircuitTemplate.h"
 #include "control/tools/SnapToGridInputHandler.h"
 #include "model/Point.h"
@@ -24,11 +26,16 @@ class CircuitSnapper {
 public:
     static auto snapCircuit(const CircuitTemplate* tpl, const Point& startPt, const Point& endPt,
                             const Stroke* styleSource, bool orthoSnap = true,
-                            SnapToGridInputHandler* snappingHandler = nullptr) -> std::unique_ptr<Stroke>;
+                            SnapToGridInputHandler* snappingHandler = nullptr,
+                            double bodyStartRatio = 0.0, double bodyEndRatio = 0.0) -> std::unique_ptr<Stroke>;
 
     static auto snapCircuitComposite(const CircuitTemplate* tpl, const Point& startPt, const Point& endPt,
                                     const Stroke* styleSource, bool orthoSnap = true,
-                                    SnapToGridInputHandler* snappingHandler = nullptr)
+                                    SnapToGridInputHandler* snappingHandler = nullptr,
+                                    double bodyStartRatio = 0.0, double bodyEndRatio = 0.0)
+            -> std::vector<std::unique_ptr<Stroke>>;
+
+    static auto snapBjtTransistor(const BjtTransistorMatch& match, const Stroke* styleSource)
             -> std::vector<std::unique_ptr<Stroke>>;
 
     static auto snapAngle(double angle, double cardinalTolerance = 0.44, double diagonalTolerance = 0.14) -> double;

@@ -18,11 +18,13 @@
 #include <set>
 #include <vector>
 
+#include "CircuitDecomposer.h"
 #include "CircuitFeatureClassifier.h"
 #include "control/Control.h"
 #include "control/shaperecognizer/ShapeRecognizer.h"
 #include "control/shaperecognizer/custom/CircuitSnapper.h"
 #include "control/shaperecognizer/custom/CustomShapeManager.h"
+#include "control/shaperecognizer/image/CircuitSnipRecognizer.h"
 #include "control/tools/EditSelection.h"
 #include "gui/MainWindow.h"
 #include "gui/PageView.h"
@@ -54,6 +56,21 @@ auto snapStraightWire(const Stroke* stroke) -> std::unique_ptr<Stroke> {
         return nullptr;
     }
 
+    // Protection: NEVER flatten a stroke that has alternating oscillations or resembles a component
+    auto featClass = CircuitFeatureClassifier::classify(stroke);
+    if (featClass == CircuitFeatureClass::ResistorIeee || featClass == CircuitFeatureClass::Inductor ||
+        featClass == CircuitFeatureClass::SineWave) {
+        return nullptr;
+    }
+
+    auto feat = CircuitFeatureClassifier::extractFeatures(stroke);
+    if (feat.alternatingExtremaCount >= 2 || feat.positivePeakCount >= 2 || feat.negativeValleyCount >= 2) {
+        return nullptr;
+    }
+    if (feat.hasOscillatingBody && feat.bodySinuosity > 1.08) {
+        return nullptr;
+    }
+
     const Point& p0 = stroke->getPoint(0);
     const Point& p1 = stroke->getPoint(count - 1);
     const double dx = p1.x - p0.x;
@@ -72,8 +89,8 @@ auto snapStraightWire(const Stroke* stroke) -> std::unique_ptr<Stroke> {
         maxPerpDist = std::max(maxPerpDist, perpDist);
     }
 
-    // Only straight wire if maximum perpendicular deviation is small relative to chord
-    if (maxPerpDist > std::min(12.0, chordLen * 0.12)) {
+    // Strict straight wire tolerance: true wires do not have large perpendicular waves
+    if (maxPerpDist > std::min(6.0, chordLen * 0.06)) {
         return nullptr;
     }
 
@@ -100,7 +117,9 @@ auto snapStraightWire(const Stroke* stroke) -> std::unique_ptr<Stroke> {
 
 /**
  * Detects hand-drawn multi-stroke ground symbols:
- * A vertical stem stroke with 2 or 3 short horizontal strokes beneath it.
+ * Either:
+ *   1. A vertical stem stroke with 2 or 3 short horizontal strokes beneath it, OR
+ *   2. 2 to 4 descending horizontal bars stacked under an existing wire or component.
  */
 struct MultiStrokeGround {
     Stroke* stem = nullptr;
@@ -113,6 +132,7 @@ auto detectMultiStrokeGrounds(const std::vector<Stroke*>& candidates) -> std::ve
     std::vector<MultiStrokeGround> grounds;
     std::set<Stroke*> consumed;
 
+    // Phase 1: Stem + Bars
     for (Stroke* s1: candidates) {
         if (!s1 || consumed.count(s1) || s1->getPointCount() < 2) continue;
         const auto& pts1 = s1->getPointVector();
@@ -121,10 +141,10 @@ auto detectMultiStrokeGrounds(const std::vector<Stroke*>& candidates) -> std::ve
         double dist = std::hypot(dx, dy);
 
         // Check if s1 is a nearly vertical stem
-        if (dist < 12.0 || dist > 120.0) continue;
+        if (dist < 8.0 || dist > 120.0) continue;
         double angle = std::atan2(dy, dx);
-        bool isDownwards = (std::abs(angle - M_PI / 2.0) < 0.35); // ~vertical down
-        bool isUpwards = (std::abs(angle + M_PI / 2.0) < 0.35);   // ~vertical up
+        bool isDownwards = (std::abs(angle - M_PI / 2.0) < 0.40); // ~vertical down
+        bool isUpwards = (std::abs(angle + M_PI / 2.0) < 0.40);   // ~vertical up
         if (!isDownwards && !isUpwards) continue;
 
         Point topP = isDownwards ? pts1.front() : pts1.back();
@@ -139,24 +159,21 @@ auto detectMultiStrokeGrounds(const std::vector<Stroke*>& candidates) -> std::ve
             double by = pts2.back().y - pts2.front().y;
             double bLen = std::hypot(bx, by);
 
-            if (bLen < 6.0 || bLen > 65.0) continue;
+            if (bLen < 4.0 || bLen > 65.0) continue;
             double bAngle = std::atan2(by, bx);
             // Must be roughly horizontal (angle near 0 or PI)
-            if (std::abs(bAngle) > 0.40 && std::abs(std::abs(bAngle) - M_PI) > 0.40) continue;
+            if (std::abs(bAngle) > 0.45 && std::abs(std::abs(bAngle) - M_PI) > 0.45) continue;
 
             Point barCenter((pts2.front().x + pts2.back().x) * 0.5, (pts2.front().y + pts2.back().y) * 0.5);
-            // Center should be horizontally aligned with botP
-            if (std::abs(barCenter.x - botP.x) > 20.0) continue;
+            if (std::abs(barCenter.x - botP.x) > 24.0) continue;
 
-            // Bar should be located near or slightly below botP (within vertical window of 35px)
             double vertDist = barCenter.y - botP.y;
-            if (vertDist >= -8.0 && vertDist <= 40.0) {
+            if (vertDist >= -8.0 && vertDist <= 45.0) {
                 matchingBars.push_back(s2);
             }
         }
 
         if (matchingBars.size() >= 2 && matchingBars.size() <= 4) {
-            // Sort bars from top to bottom
             std::sort(matchingBars.begin(), matchingBars.end(), [](Stroke* a, Stroke* b) {
                 return a->getBoundingBox().y < b->getBoundingBox().y;
             });
@@ -170,6 +187,66 @@ auto detectMultiStrokeGrounds(const std::vector<Stroke*>& candidates) -> std::ve
 
             consumed.insert(s1);
             for (auto* b: matchingBars) {
+                consumed.insert(b);
+            }
+        }
+    }
+
+    // Phase 2: Direct horizontal bar stack without an explicit separate stem stroke
+    std::vector<Stroke*> remainingHori;
+    for (Stroke* s: candidates) {
+        if (!s || consumed.count(s) || s->getPointCount() < 2) continue;
+        // Never classify handwriting as ground bars
+        if (CircuitFeatureClassifier::isHandwritingOrAnnotation(s)) continue;
+
+        const auto& pts = s->getPointVector();
+        double dx = pts.back().x - pts.front().x;
+        double dy = pts.back().y - pts.front().y;
+        double len = std::hypot(dx, dy);
+        if (len >= 4.0 && len <= 35.0) {
+            double angle = std::atan2(dy, dx);
+            if (std::abs(angle) < 0.35 || std::abs(std::abs(angle) - M_PI) < 0.35) {
+                remainingHori.push_back(s);
+            }
+        }
+    }
+
+    std::sort(remainingHori.begin(), remainingHori.end(), [](Stroke* a, Stroke* b) {
+        return a->getBoundingBox().y < b->getBoundingBox().y;
+    });
+
+    for (size_t i = 0; i < remainingHori.size(); ++i) {
+        Stroke* bTop = remainingHori[i];
+        if (consumed.count(bTop)) continue;
+
+        auto boxTop = bTop->getBoundingBox();
+        double centerX = boxTop.x + boxTop.width * 0.5;
+        std::vector<Stroke*> stack;
+        stack.push_back(bTop);
+
+        for (size_t j = i + 1; j < remainingHori.size(); ++j) {
+            Stroke* bNext = remainingHori[j];
+            if (consumed.count(bNext)) continue;
+
+            auto boxNext = bNext->getBoundingBox();
+            double nextCenterX = boxNext.x + boxNext.width * 0.5;
+            double dy = boxNext.y - stack.back()->getBoundingBox().y;
+
+            if (std::abs(nextCenterX - centerX) <= 16.0 && dy > 2.0 && dy <= 22.0) {
+                stack.push_back(bNext);
+                if (stack.size() == 3) break;
+            }
+        }
+
+        if (stack.size() >= 2) {
+            MultiStrokeGround g;
+            g.stem = nullptr;
+            g.bars = stack;
+            g.topPt = Point(centerX, stack.front()->getBoundingBox().y);
+            g.bottomPt = Point(centerX, stack.back()->getBoundingBox().y + stack.back()->getBoundingBox().height);
+            grounds.push_back(g);
+
+            for (auto* b: stack) {
                 consumed.insert(b);
             }
         }
@@ -196,22 +273,21 @@ void applyTJunctionSnapping(const std::vector<Element*>& newlyShapedElements) {
 
     for (Element* elem: newlyShapedElements) {
         auto* s = static_cast<Stroke*>(elem);
+        // Only consider simple 2-point wire segments as rails
+        if (s->getPointCount() != 2) continue;
+
         const auto& pts = s->getPointVector();
-        if (pts.size() < 2) continue;
+        Point a = pts[0];
+        Point b = pts[1];
+        double dx = std::abs(b.x - a.x);
+        double dy = std::abs(b.y - a.y);
+        double len = std::hypot(b.x - a.x, b.y - a.y);
 
-        for (size_t i = 0; i + 1 < pts.size(); ++i) {
-            Point a = pts[i];
-            Point b = pts[i + 1];
-            double dx = std::abs(b.x - a.x);
-            double dy = std::abs(b.y - a.y);
-            double len = std::hypot(b.x - a.x, b.y - a.y);
-
-            if (len >= 18.0) {
-                if (dy < 1.0) {
-                    rails.push_back({s, i, a, b, true, false});
-                } else if (dx < 1.0) {
-                    rails.push_back({s, i, a, b, false, true});
-                }
+        if (len >= 25.0) {
+            if (dy < 1.0) {
+                rails.push_back({s, 0, a, b, true, false});
+            } else if (dx < 1.0) {
+                rails.push_back({s, 0, a, b, false, true});
             }
         }
     }
@@ -222,8 +298,11 @@ void applyTJunctionSnapping(const std::vector<Element*>& newlyShapedElements) {
 
     for (Element* elem: newlyShapedElements) {
         auto* s = static_cast<Stroke*>(elem);
+        // Do not alter complex composite or multi-stroke components
+        if (s->getPointCount() > 2) continue;
+
         auto pts = s->getPointVector();
-        if (pts.size() < 2) continue;
+        if (pts.size() != 2) continue;
 
         bool modified = false;
 
@@ -233,8 +312,8 @@ void applyTJunctionSnapping(const std::vector<Element*>& newlyShapedElements) {
 
             double wireDx = std::abs(pt.x - otherPt.x);
             double wireDy = std::abs(pt.y - otherPt.y);
-            bool wireIsVertical = (wireDx < 2.0 && wireDy >= 5.0);
-            bool wireIsHorizontal = (wireDy < 2.0 && wireDx >= 5.0);
+            bool wireIsVertical = (wireDx < 4.0 && wireDy >= 5.0);
+            bool wireIsHorizontal = (wireDy < 4.0 && wireDx >= 5.0);
 
             for (auto& rail: rails) {
                 if (rail.stroke == s) continue;
@@ -244,28 +323,9 @@ void applyTJunctionSnapping(const std::vector<Element*>& newlyShapedElements) {
                     double minX = std::min(rail.p0.x, rail.p1.x);
                     double maxX = std::max(rail.p0.x, rail.p1.x);
 
-                    if (std::abs(pt.y - railY) <= 18.0 && pt.x >= minX - 14.0 && pt.x <= maxX + 14.0) {
+                    if (std::abs(pt.y - railY) <= 18.0 && pt.x >= minX - 10.0 && pt.x <= maxX + 10.0) {
                         pt.y = railY;
                         modified = true;
-
-                        // Extend rail if wire is slightly outside its endpoints
-                        if (pt.x < minX) {
-                            auto railPts = rail.stroke->getPointVector();
-                            if (rail.p0.x < rail.p1.x) {
-                                railPts[rail.segIdx].x = pt.x;
-                            } else {
-                                railPts[rail.segIdx + 1].x = pt.x;
-                            }
-                            rail.stroke->setPointVector(std::move(railPts));
-                        } else if (pt.x > maxX) {
-                            auto railPts = rail.stroke->getPointVector();
-                            if (rail.p0.x > rail.p1.x) {
-                                railPts[rail.segIdx].x = pt.x;
-                            } else {
-                                railPts[rail.segIdx + 1].x = pt.x;
-                            }
-                            rail.stroke->setPointVector(std::move(railPts));
-                        }
                         break;
                     }
                 } else if (wireIsHorizontal && rail.isVertical) {
@@ -273,28 +333,9 @@ void applyTJunctionSnapping(const std::vector<Element*>& newlyShapedElements) {
                     double minY = std::min(rail.p0.y, rail.p1.y);
                     double maxY = std::max(rail.p0.y, rail.p1.y);
 
-                    if (std::abs(pt.x - railX) <= 18.0 && pt.y >= minY - 14.0 && pt.y <= maxY + 14.0) {
+                    if (std::abs(pt.x - railX) <= 18.0 && pt.y >= minY - 10.0 && pt.y <= maxY + 10.0) {
                         pt.x = railX;
                         modified = true;
-
-                        // Extend rail if wire is slightly outside its endpoints
-                        if (pt.y < minY) {
-                            auto railPts = rail.stroke->getPointVector();
-                            if (rail.p0.y < rail.p1.y) {
-                                railPts[rail.segIdx].y = pt.y;
-                            } else {
-                                railPts[rail.segIdx + 1].y = pt.y;
-                            }
-                            rail.stroke->setPointVector(std::move(railPts));
-                        } else if (pt.y > maxY) {
-                            auto railPts = rail.stroke->getPointVector();
-                            if (rail.p0.y > rail.p1.y) {
-                                railPts[rail.segIdx].y = pt.y;
-                            } else {
-                                railPts[rail.segIdx + 1].y = pt.y;
-                            }
-                            rail.stroke->setPointVector(std::move(railPts));
-                        }
                         break;
                     }
                 }
@@ -306,6 +347,44 @@ void applyTJunctionSnapping(const std::vector<Element*>& newlyShapedElements) {
         }
     }
 }
+/**
+ * Snaps an interior stroke inside an AC source circle into a clean mathematical sine wave.
+ */
+auto snapSineWave(const Stroke* stroke, const Point& circleCenter, double circleRadius) -> std::unique_ptr<Stroke> {
+    if (!stroke || stroke->getPointCount() < 4) return nullptr;
+
+    auto featClass = CircuitFeatureClassifier::classify(stroke);
+    auto feat = CircuitFeatureClassifier::extractFeatures(stroke);
+
+    if (featClass != CircuitFeatureClass::SineWave &&
+        !(feat.positivePeakCount >= 1 && feat.negativeValleyCount >= 1 && feat.alternatingExtremaCount <= 3)) {
+        return nullptr;
+    }
+
+    auto box = stroke->getBoundingBox();
+    Point strokeCenter(box.x + box.width * 0.5, box.y + box.height * 0.5);
+
+    // Verify it is inside or near the circle center
+    if (strokeCenter.lineLengthTo(circleCenter) > circleRadius * 0.60) {
+        return nullptr;
+    }
+
+    double waveWidth = std::clamp(circleRadius * 1.1, 10.0, circleRadius * 1.6);
+    double waveHeight = std::clamp(circleRadius * 0.45, 4.0, circleRadius * 0.70);
+
+    auto out = std::make_unique<Stroke>(*stroke);
+    std::vector<Point> pts;
+    constexpr int NUM_PTS = 25;
+    for (int i = 0; i <= NUM_PTS; ++i) {
+        double t = static_cast<double>(i) / static_cast<double>(NUM_PTS);
+        double x = (circleCenter.x - waveWidth * 0.5) + t * waveWidth;
+        double y = circleCenter.y - std::sin(t * 2.0 * M_PI) * waveHeight;
+        pts.emplace_back(x, y);
+    }
+    out->setPointVector(std::move(pts));
+    return out;
+}
+
 /**
  * Snaps an L-shaped corner wire into two orthogonal perpendicular segments.
  */
@@ -461,18 +540,89 @@ auto AutoShapeSelection::autoShapeSelectedContent(Control* control) -> bool {
     std::vector<Element*> newlyShapedElements;
     std::set<Stroke*> consumedStrokes;
 
+    // 0. Primary Snip Recognition Pipeline: 2D Image Skeleton & Topology Extraction
+    // When multiple strokes are selected, analyze the 2D image as a whole to avoid
+    // stroke-order, pen-lift, or compound stroke artifacts.
+    if (customMgr && candidates.size() >= 3) {
+        auto snipResult = CircuitSnipRecognizer::processSnip(candidates, customMgr);
+        if (snipResult.success && !snipResult.strokesToInsert.empty()) {
+            auto delAction = std::make_unique<DeleteUndoAction>(page, false);
+            for (Stroke* sOrig: snipResult.strokesToRemove) {
+                std::lock_guard lock(*doc);
+                auto rem = layer->removeElement(sOrig);
+                if (rem.e) {
+                    delAction->addElement(layer, std::move(rem.e), rem.pos);
+                }
+            }
+            for (auto& sNew: snipResult.strokesToInsert) {
+                Stroke* ptr = sNew.get();
+                {
+                    std::lock_guard lock(*doc);
+                    layer->addElement(std::move(sNew));
+                }
+                newlyShapedElements.push_back(ptr);
+                groupUndo->addAction(std::make_unique<InsertUndoAction>(page, layer, ptr));
+            }
+            groupUndo->addAction(std::move(delAction));
+
+            for (Stroke* sText: snipResult.protectedTextStrokes) {
+                newlyShapedElements.push_back(sText);
+            }
+
+            // Register undo action without holding document lock
+            control->getUndoRedoHandler()->addUndoAction(std::move(groupUndo));
+
+            // Reselect elements on canvas
+            InsertionOrderRef refs;
+            for (const auto& elem: layer->getElements()) {
+                if (!elem) continue;
+                bool isSelected = false;
+                for (Element* rep: newlyShapedElements) {
+                    if (elem.get() == rep) {
+                        isSelected = true;
+                        break;
+                    }
+                }
+                if (isSelected) {
+                    Element::Index idx = layer->indexOf(elem.get());
+                    if (idx != Element::InvalidIndex) {
+                        refs.emplace_back(elem.get(), idx);
+                    }
+                }
+            }
+
+            if (!refs.empty()) {
+                std::sort(refs.begin(), refs.end());
+                size_t pageNo = doc->indexOf(page);
+                XojPageView* targetView = control->getWindow()->getXournal()->getViewFor(pageNo);
+                if (!targetView) {
+                    targetView = view;
+                }
+                auto newSel = SelectionFactory::createFromElementsOnActiveLayer(control, page, targetView, refs);
+                if (newSel) {
+                    control->getWindow()->getXournal()->setSelection(newSel.release());
+                }
+            }
+
+            return true;
+        }
+    }
+
     // Process multi-stroke ground symbols first
     auto multiGrounds = detectMultiStrokeGrounds(candidates);
     auto groundTpl = customMgr ? customMgr->getTemplateById("ground") : nullptr;
     if (groundTpl) {
         for (const auto& g: multiGrounds) {
-            auto compStrokes = CircuitSnapper::snapCircuitComposite(groundTpl, g.topPt, g.bottomPt, g.stem, true);
+            const Stroke* styleSrc = g.stem ? g.stem : (g.bars.empty() ? nullptr : g.bars.front());
+            auto compStrokes = CircuitSnapper::snapCircuitComposite(groundTpl, g.topPt, g.bottomPt, styleSrc, true);
             if (compStrokes.empty()) continue;
 
             auto delAction = std::make_unique<DeleteUndoAction>(page, false);
 
             std::vector<Stroke*> toRemove = g.bars;
-            toRemove.push_back(g.stem);
+            if (g.stem) {
+                toRemove.push_back(g.stem);
+            }
 
             for (Stroke* sOrig: toRemove) {
                 consumedStrokes.insert(sOrig);
@@ -497,11 +647,139 @@ auto AutoShapeSelection::autoShapeSelectedContent(Control* control) -> bool {
         }
     }
 
+    // Pass 1: Handwriting & Annotation Protection (Block & Proximity Clustering)
+    // Segregate text words ('34K', '22K', '50', 'is', 'RE 1,5', 'RC 2K')
+    // so they are NEVER modified, turned into shapes, or magnetically pulled into nodes.
+    std::set<Stroke*> protectedHandwriting = CircuitDecomposer::clusterTextBlocks(candidates);
+    for (Stroke* s: candidates) {
+        if (!s || consumedStrokes.count(s)) continue;
+        if (CircuitFeatureClassifier::isHandwritingOrAnnotation(s)) {
+            protectedHandwriting.insert(s);
+        }
+    }
+
+    // Pass 1.5: Multi-Stroke BJT Transistor Assembly
+    auto bjtMatches = CircuitFeatureClassifier::detectBjtTransistors(candidates);
+    for (const auto& match: bjtMatches) {
+        if (consumedStrokes.count(match.baseBar) || consumedStrokes.count(match.emitter) || consumedStrokes.count(match.collector)) {
+            continue;
+        }
+
+        const Stroke* styleSrc = match.baseBar;
+        auto bjtStrokes = CircuitSnapper::snapBjtTransistor(match, styleSrc);
+        if (!bjtStrokes.empty()) {
+            auto delAction = std::make_unique<DeleteUndoAction>(page, false);
+            std::vector<Stroke*> toRemove = {match.baseBar, match.emitter, match.collector};
+
+            for (Stroke* sOrig: toRemove) {
+                consumedStrokes.insert(sOrig);
+                std::lock_guard lock(*doc);
+                auto rem = layer->removeElement(sOrig);
+                if (rem.e) {
+                    delAction->addElement(layer, std::move(rem.e), rem.pos);
+                }
+            }
+
+            for (auto& sNew: bjtStrokes) {
+                Stroke* ptr = sNew.get();
+                {
+                    std::lock_guard lock(*doc);
+                    layer->addElement(std::move(sNew));
+                }
+                newlyShapedElements.push_back(ptr);
+                groupUndo->addAction(std::make_unique<InsertUndoAction>(page, layer, ptr));
+            }
+
+            groupUndo->addAction(std::move(delAction));
+        }
+    }
+
+    // Anchor Nodes for components, BJT, and ground terminals
+    struct AnchorNode {
+        Point pt;
+        Point direction; // Optional preferred orientation
+    };
+    std::vector<AnchorNode> anchorNodes;
+
+    // Record anchors from BJT transistors
+    for (const auto& match: bjtMatches) {
+        anchorNodes.push_back({match.basePin, Point()});
+        anchorNodes.push_back({match.collectorPin, Point()});
+        anchorNodes.push_back({match.emitterPin, Point()});
+    }
+
+    // Record anchors from multi-stroke grounds
+    for (const auto& g: multiGrounds) {
+        anchorNodes.push_back({g.topPt, Point(0.0, -1.0)});
+    }
+
     ShapeRecognizer standardRecognizer;
 
     for (Stroke* stroke: candidates) {
-        if (!stroke || consumedStrokes.count(stroke) || stroke->getPointCount() < 2) {
+        if (!stroke || consumedStrokes.count(stroke) || stroke->getPointCount() < 2 ||
+            protectedHandwriting.count(stroke)) {
             continue;
+        }
+
+        // Check if this is a compound stroke (lead + resistor body + lead)
+        auto decomposedParts = CircuitDecomposer::decomposeCompoundStroke(stroke);
+        if (!decomposedParts.empty() && customMgr) {
+            auto rTpl = customMgr->getTemplateById("resistor_ieee");
+            if (rTpl) {
+                auto delAction = std::make_unique<DeleteUndoAction>(page, false);
+                Element::Index pos = Element::InvalidIndex;
+                {
+                    std::lock_guard lock(*doc);
+                    auto rem = layer->removeElement(stroke);
+                    if (rem.e) {
+                        pos = rem.pos;
+                        delAction->addElement(layer, std::move(rem.e), pos);
+                    }
+                }
+
+                for (auto& part: decomposedParts) {
+                    if (part.isResistorBody) {
+                        auto compStrokes = customMgr->recognizeComposite(part.stroke.get(), nullptr, 0.50);
+                        if (!compStrokes.empty()) {
+                            for (auto& sNew: compStrokes) {
+                                Stroke* ptr = sNew.get();
+                                {
+                                    std::lock_guard lock(*doc);
+                                    layer->addElement(std::move(sNew));
+                                }
+                                newlyShapedElements.push_back(ptr);
+                                groupUndo->addAction(std::make_unique<InsertUndoAction>(page, layer, ptr));
+                            }
+                            continue;
+                        }
+                    } else if (part.isWireLead) {
+                        auto wire = snapStraightWire(part.stroke.get());
+                        if (wire) {
+                            Stroke* ptr = wire.get();
+                            {
+                                std::lock_guard lock(*doc);
+                                layer->addElement(std::move(wire));
+                            }
+                            newlyShapedElements.push_back(ptr);
+                            groupUndo->addAction(std::make_unique<InsertUndoAction>(page, layer, ptr));
+                            continue;
+                        }
+                    }
+
+                    // Fallback: keep decomposed stroke as is
+                    Stroke* ptr = part.stroke.get();
+                    {
+                        std::lock_guard lock(*doc);
+                        layer->addElement(std::move(part.stroke));
+                    }
+                    newlyShapedElements.push_back(ptr);
+                    groupUndo->addAction(std::make_unique<InsertUndoAction>(page, layer, ptr));
+                }
+
+                groupUndo->addAction(std::move(delAction));
+                consumedStrokes.insert(stroke);
+                continue;
+            }
         }
 
         std::unique_ptr<Stroke> replacement = nullptr;
@@ -524,6 +802,10 @@ auto AutoShapeSelection::autoShapeSelectedContent(Control* control) -> bool {
 
                 for (auto& sNew: compStrokes) {
                     Stroke* ptr = sNew.get();
+                    if (ptr->getPointCount() >= 2) {
+                        anchorNodes.push_back({ptr->getPoint(0), Point()});
+                        anchorNodes.push_back({ptr->getPoint(ptr->getPointCount() - 1), Point()});
+                    }
                     {
                         std::lock_guard lock(*doc);
                         layer->addElement(std::move(sNew));
@@ -540,25 +822,99 @@ auto AutoShapeSelection::autoShapeSelectedContent(Control* control) -> bool {
             }
         }
 
-        // Try 2: Standard geometric shapes (circles, ellipses, rects, triangles)
+        // Try 2.5: Arrow Recognition
         if (!replacement) {
-            auto recogElement = standardRecognizer.recognizePatterns(stroke, 10.0);
-            if (recogElement && recogElement->getType() == ELEMENT_STROKE) {
-                replacement.reset(static_cast<Stroke*>(recogElement.release()));
+            Point shaftStart, tip;
+            if (CircuitFeatureClassifier::detectArrow(stroke, shaftStart, tip)) {
+                // Generate an Arrow shape
+                double dx = tip.x - shaftStart.x;
+                double dy = tip.y - shaftStart.y;
+                double len = std::hypot(dx, dy);
+                if (len >= 16.0) {
+                    // Ortho snap if roughly horizontal or vertical
+                    double angle = std::atan2(dy, dx);
+                    constexpr double SNAP_TOL = 25.0 * (M_PI / 180.0);
+                    if (std::abs(angle) < SNAP_TOL || std::abs(std::abs(angle) - M_PI) < SNAP_TOL) {
+                        tip.y = shaftStart.y;
+                        len = std::abs(tip.x - shaftStart.x);
+                        angle = (tip.x >= shaftStart.x) ? 0.0 : M_PI;
+                    } else if (std::abs(std::abs(angle) - M_PI * 0.5) < SNAP_TOL) {
+                        tip.x = shaftStart.x;
+                        len = std::abs(tip.y - shaftStart.y);
+                        angle = (tip.y >= shaftStart.y) ? (M_PI * 0.5) : (-M_PI * 0.5);
+                    }
+
+                    double headLen = std::clamp(len * 0.35, 6.0, 16.0);
+                    double headAngle = M_PI / 6.0; // 30 deg
+
+                    auto arrowStroke = std::make_unique<Stroke>(*stroke);
+                    std::vector<Point> aPts;
+                    aPts.reserve(6);
+                    aPts.push_back(shaftStart);
+                    aPts.push_back(tip);
+                    // Wing 1
+                    aPts.emplace_back(tip.x - headLen * std::cos(angle - headAngle),
+                                      tip.y - headLen * std::sin(angle - headAngle));
+                    aPts.push_back(tip);
+                    // Wing 2
+                    aPts.emplace_back(tip.x - headLen * std::cos(angle + headAngle),
+                                      tip.y - headLen * std::sin(angle + headAngle));
+                    arrowStroke->setPointVector(std::move(aPts));
+                    replacement = std::move(arrowStroke);
+                }
             }
         }
 
-        // Try 3: L-shaped corner wire
+        // Try 3: Standard geometric shapes (circles, ellipses, rects, triangles)
+        if (!replacement) {
+            auto recogElement = standardRecognizer.recognizePatterns(stroke, 10.0);
+            if (recogElement && recogElement->getType() == ELEMENT_STROKE) {
+                auto* sRecog = static_cast<Stroke*>(recogElement.get());
+                // Protect elongated lines/wires from being turned into degenerate triangles or polygons
+                auto sBox = stroke->getBoundingBox();
+                double aspect = (sBox.width > 0 && sBox.height > 0)
+                                    ? (std::max(sBox.width, sBox.height) / std::min(sBox.width, sBox.height))
+                                    : 100.0;
+                if (aspect <= 4.0 || sRecog->getPointCount() > 16) {
+                    replacement.reset(static_cast<Stroke*>(recogElement.release()));
+                }
+            }
+        }
+
+        // Try 3: AC Source internal sine wave inside a circle
+        if (!replacement) {
+            for (Element* otherElem: newlyShapedElements) {
+                if (otherElem && otherElem->getType() == ELEMENT_STROKE) {
+                    auto* otherStroke = static_cast<Stroke*>(otherElem);
+                    auto box = otherStroke->getBoundingBox();
+                    // Check if otherStroke is roughly circular/square (e.g. AC circle)
+                    if (std::abs(box.width - box.height) <= std::max(box.width, box.height) * 0.25 &&
+                        std::max(box.width, box.height) >= 20.0) {
+                        Point center(box.x + box.width * 0.5, box.y + box.height * 0.5);
+                        double radius = (box.width + box.height) * 0.25;
+                        replacement = snapSineWave(stroke, center, radius);
+                        if (replacement) break;
+                    }
+                }
+            }
+        }
+
+        // Try 4: L-shaped corner wire
         if (!replacement) {
             replacement = snapCornerWire(stroke);
         }
 
-        // Try 4: Straight connecting wire
+        // Try 5: Straight connecting wire
         if (!replacement) {
             replacement = snapStraightWire(stroke);
         }
 
         if (replacement) {
+            if (replacement->getPointCount() >= 2) {
+                anchorNodes.push_back({replacement->getPoint(0), Point()});
+                anchorNodes.push_back({replacement->getPoint(replacement->getPointCount() - 1), Point()});
+            }
+
             // Replace stroke in layer, locking doc only for the brief layer mutation
             Stroke* repPtr = replacement.get();
             ElementPtr ownedOriginal;
@@ -595,7 +951,7 @@ auto AutoShapeSelection::autoShapeSelectedContent(Control* control) -> bool {
     // Connect wire endpoints and component terminals that lie within 16 px of each other
     constexpr double NODE_PROXIMITY_SQ = 16.0 * 16.0;
 
-    // Collect all endpoints of newly shaped strokes
+    // Collect all endpoints of newly shaped strokes ONLY (NEVER touch handwriting or unshaped strokes)
     struct EndpointRef {
         Stroke* stroke;
         bool isStart;
@@ -605,6 +961,11 @@ auto AutoShapeSelection::autoShapeSelectedContent(Control* control) -> bool {
 
     for (Element* elem: newlyShapedElements) {
         auto* s = static_cast<Stroke*>(elem);
+        // Never pull endpoints of handwriting
+        if (protectedHandwriting.count(s)) continue;
+        // Never pull endpoints of complex components (resistors, inductors, AC waves, arrows, grounds)
+        if (s->getPointCount() > 2) continue;
+
         const auto& pts = s->getPointVector();
         if (pts.size() >= 2) {
             endpoints.push_back({s, true, pts.front()});
@@ -620,7 +981,9 @@ auto AutoShapeSelection::autoShapeSelectedContent(Control* control) -> bool {
             }
             const double dx = endpoints[i].pt.x - endpoints[j].pt.x;
             const double dy = endpoints[i].pt.y - endpoints[j].pt.y;
-            if (dx * dx + dy * dy <= NODE_PROXIMITY_SQ) {
+            double distSq = dx * dx + dy * dy;
+
+            if (distSq <= NODE_PROXIMITY_SQ) {
                 Point junction((endpoints[i].pt.x + endpoints[j].pt.x) * 0.5,
                                (endpoints[i].pt.y + endpoints[j].pt.y) * 0.5);
                 endpoints[i].pt = junction;
@@ -629,14 +992,24 @@ auto AutoShapeSelection::autoShapeSelectedContent(Control* control) -> bool {
         }
     }
 
-    // Apply snapped endpoints back to the strokes
+    // Apply snapped endpoints back to the strokes (adjusting only endpoints of simple 2-point wire segments)
     for (const auto& ep: endpoints) {
+        if (ep.stroke->getPointCount() != 2) {
+            // Never distort interior points of complex shaped components (resistors, inductors, AC waves)
+            continue;
+        }
         auto pts = ep.stroke->getPointVector();
-        if (pts.empty()) continue;
+        if (pts.size() < 2) continue;
         if (ep.isStart) {
-            pts.front() = ep.pt;
+            double shift = ep.pt.lineLengthTo(pts.front());
+            if (shift <= 12.0) {
+                pts.front() = ep.pt;
+            }
         } else {
-            pts.back() = ep.pt;
+            double shift = ep.pt.lineLengthTo(pts.back());
+            if (shift <= 12.0) {
+                pts.back() = ep.pt;
+            }
         }
         ep.stroke->setPointVector(std::move(pts));
     }

@@ -47,7 +47,8 @@ auto CircuitSnapper::snapAngle(double angle, double cardinalTolerance, double di
 }
 
 auto CircuitSnapper::snapCircuit(const CircuitTemplate* tpl, const Point& startPt, const Point& endPt,
-                                const Stroke* styleSource, bool orthoSnap, SnapToGridInputHandler* snappingHandler)
+                                const Stroke* styleSource, bool orthoSnap, SnapToGridInputHandler* snappingHandler,
+                                double bodyStartRatio, double bodyEndRatio)
         -> std::unique_ptr<Stroke> {
     if (!tpl) {
         return nullptr;
@@ -162,36 +163,24 @@ auto CircuitSnapper::snapCircuit(const CircuitTemplate* tpl, const Point& startP
     double lead1Len = 0.0;
     double lead2Len = 0.0;
 
-    if (dist < 35.0) {
+    if (bodyEndRatio > bodyStartRatio + 0.10 && bodyStartRatio >= 0.0 && bodyEndRatio <= 1.0) {
+        lead1Len = bodyStartRatio * dist;
+        lead2Len = (1.0 - bodyEndRatio) * dist;
+        placedBodyWidth = dist - lead1Len - lead2Len;
+    } else if (dist < 35.0) {
         placedBodyWidth = dist * 0.80;
         lead1Len = dist * 0.10;
         lead2Len = dist * 0.10;
     } else {
-        placedBodyWidth = std::clamp(dist * 0.58, 20.0, dist - 14.0);
+        // Balanced proportions: central body occupies 58% of span (capped to reasonable schematic size)
+        double idealBody = std::clamp(dist * 0.58, 20.0, 90.0);
+        placedBodyWidth = std::min(idealBody, dist - 14.0);
         lead1Len = (dist - placedBodyWidth) / 2.0;
         lead2Len = (dist - placedBodyWidth) / 2.0;
     }
 
     double scaleY = (tplBodyWidth > 0.0) ? (placedBodyWidth / tplBodyWidth) : 1.0;
-
-    // If styleSource is provided, adapt scaleY to match user's drawn amplitude
-    if (styleSource && styleSource->getPointCount() > 4) {
-        double maxDev = 0.0;
-        for (const auto& p: styleSource->getPointVector()) {
-            double px = p.x - p0.x;
-            double py = p.y - p0.y;
-            double dev = std::abs(-sinA * px + cosA * py);
-            maxDev = std::max(maxDev, dev);
-        }
-        double tplDev = tpl->getMaxBodyDeviation();
-        if (tplDev < 1.0) {
-            tplDev = tpl->getTemplateHeight() / 2.0;
-        }
-        if (maxDev > 4.0 && tplDev > 2.0) {
-            double drawnScaleY = maxDev / tplDev;
-            scaleY = 0.6 * scaleY + 0.4 * drawnScaleY;
-        }
-    }
+    scaleY = std::clamp(scaleY, 0.4, 1.8);
 
     // Baseline rotation of template
     const Point& tplA = tpl->getTerminalA();
@@ -246,7 +235,8 @@ auto CircuitSnapper::snapCircuit(const CircuitTemplate* tpl, const Point& startP
 
 auto CircuitSnapper::snapCircuitComposite(const CircuitTemplate* tpl, const Point& startPt, const Point& endPt,
                                          const Stroke* styleSource, bool orthoSnap,
-                                         SnapToGridInputHandler* snappingHandler)
+                                         SnapToGridInputHandler* snappingHandler,
+                                         double bodyStartRatio, double bodyEndRatio)
         -> std::vector<std::unique_ptr<Stroke>> {
     std::vector<std::unique_ptr<Stroke>> results;
     if (!tpl) {
@@ -367,10 +357,112 @@ auto CircuitSnapper::snapCircuitComposite(const CircuitTemplate* tpl, const Poin
     }
 
     // Default: Single stroke component (Resistor, Inductor, Diode, Custom SVG)
-    auto single = snapCircuit(tpl, startPt, endPt, styleSource, orthoSnap, snappingHandler);
+    auto single = snapCircuit(tpl, startPt, endPt, styleSource, orthoSnap, snappingHandler, bodyStartRatio, bodyEndRatio);
     if (single) {
         results.push_back(std::move(single));
     }
+    return results;
+}
+
+auto CircuitSnapper::snapBjtTransistor(const BjtTransistorMatch& match, const Stroke* styleSource)
+        -> std::vector<std::unique_ptr<Stroke>> {
+    std::vector<std::unique_ptr<Stroke>> results;
+
+    Point baseCenter = match.baseCenter;
+    bool isVert = match.isVertical;
+
+    // Standard IEEE BJT geometry dimensions
+    constexpr double BASE_BAR_HALF_LEN = 16.0;
+    constexpr double LEAD_OFFSET_Y = 10.0;
+
+    if (isVert) {
+        bool leadsOnRight = (match.collectorPin.x >= baseCenter.x);
+        double leadDirX = leadsOnRight ? 1.0 : -1.0;
+
+        // 1. Base Pin & Horizontal Base Lead: connects basePin to baseCenter
+        auto sBaseLead = std::make_unique<Stroke>();
+        sBaseLead->applyStyleFrom(styleSource);
+        sBaseLead->addPoint(match.basePin);
+        sBaseLead->addPoint(baseCenter);
+        results.push_back(std::move(sBaseLead));
+
+        // 2. Base Bar: vertical thick bar centered at baseCenter
+        auto sBaseBar = std::make_unique<Stroke>();
+        sBaseBar->applyStyleFrom(styleSource);
+        sBaseBar->setWidth(sBaseBar->getWidth() * 1.5); // Slightly thicker for IEEE base bar
+        sBaseBar->addPoint(Point(baseCenter.x, baseCenter.y - BASE_BAR_HALF_LEN));
+        sBaseBar->addPoint(Point(baseCenter.x, baseCenter.y + BASE_BAR_HALF_LEN));
+        results.push_back(std::move(sBaseBar));
+
+        // 3. Collector Branch: from (baseCenter.x, baseCenter.y - LEAD_OFFSET_Y) to collectorPin
+        Point cStart(baseCenter.x, baseCenter.y - LEAD_OFFSET_Y);
+        Point cKnee(baseCenter.x + 14.0 * leadDirX, baseCenter.y - 18.0);
+        auto sCollector = std::make_unique<Stroke>();
+        sCollector->applyStyleFrom(styleSource);
+        sCollector->addPoint(cStart);
+        sCollector->addPoint(cKnee);
+        sCollector->addPoint(match.collectorPin);
+        results.push_back(std::move(sCollector));
+
+        // 4. Emitter Branch: from (baseCenter.x, baseCenter.y + LEAD_OFFSET_Y) to emitterPin with Arrow
+        Point eStart(baseCenter.x, baseCenter.y + LEAD_OFFSET_Y);
+        Point eKnee(baseCenter.x + 14.0 * leadDirX, baseCenter.y + 18.0);
+        auto sEmitter = std::make_unique<Stroke>();
+        sEmitter->applyStyleFrom(styleSource);
+        sEmitter->addPoint(eStart);
+        sEmitter->addPoint(eKnee);
+        sEmitter->addPoint(match.emitterPin);
+        results.push_back(std::move(sEmitter));
+
+        // 5. Arrowhead on Emitter
+        Point midE((eStart.x + eKnee.x) * 0.5, (eStart.y + eKnee.y) * 0.5);
+        double dirX = match.isPnp ? (eStart.x - eKnee.x) : (eKnee.x - eStart.x);
+        double dirY = match.isPnp ? (eStart.y - eKnee.y) : (eKnee.y - eStart.y);
+        double dLen = std::hypot(dirX, dirY);
+        if (dLen > 1e-4) {
+            dirX /= dLen;
+            dirY /= dLen;
+            double perpX = -dirY;
+            double perpY = dirX;
+
+            constexpr double ARROW_SZ = 6.0;
+            auto sArrow = std::make_unique<Stroke>();
+            sArrow->applyStyleFrom(styleSource);
+            sArrow->addPoint(Point(midE.x - dirX * ARROW_SZ + perpX * (ARROW_SZ * 0.5),
+                                   midE.y - dirY * ARROW_SZ + perpY * (ARROW_SZ * 0.5)));
+            sArrow->addPoint(midE);
+            sArrow->addPoint(Point(midE.x - dirX * ARROW_SZ - perpX * (ARROW_SZ * 0.5),
+                                   midE.y - dirY * ARROW_SZ - perpY * (ARROW_SZ * 0.5)));
+            results.push_back(std::move(sArrow));
+        }
+    } else {
+        // Horizontal orientation
+        auto sBaseLead = std::make_unique<Stroke>();
+        sBaseLead->applyStyleFrom(styleSource);
+        sBaseLead->addPoint(match.basePin);
+        sBaseLead->addPoint(baseCenter);
+        results.push_back(std::move(sBaseLead));
+
+        auto sBaseBar = std::make_unique<Stroke>();
+        sBaseBar->applyStyleFrom(styleSource);
+        sBaseBar->setWidth(sBaseBar->getWidth() * 1.5);
+        sBaseBar->addPoint(Point(baseCenter.x - BASE_BAR_HALF_LEN, baseCenter.y));
+        sBaseBar->addPoint(Point(baseCenter.x + BASE_BAR_HALF_LEN, baseCenter.y));
+        results.push_back(std::move(sBaseBar));
+
+        auto sCollector = std::make_unique<Stroke>();
+        sCollector->applyStyleFrom(styleSource);
+        sCollector->addPoint(Point(baseCenter.x - LEAD_OFFSET_Y, baseCenter.y));
+        sCollector->addPoint(match.collectorPin);
+        results.push_back(std::move(sCollector));
+
+        auto sEmitter = std::make_unique<Stroke>();
+        sEmitter->applyStyleFrom(styleSource);
+        sEmitter->addPoint(Point(baseCenter.x + LEAD_OFFSET_Y, baseCenter.y));
+        sEmitter->addPoint(match.emitterPin);
+        results.push_back(std::move(sEmitter));
+    }
+
     return results;
 }
 

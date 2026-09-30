@@ -161,23 +161,26 @@ auto CustomShapeManager::recognizeComposite(const Stroke* stroke, CircuitRecogni
     }
 
     if (res.matched && res.matchedTemplate) {
-        return snapShapeComposite(res.matchedTemplate, res.terminalStart, res.terminalEnd, stroke, true);
+        return snapShapeComposite(res.matchedTemplate, res.terminalStart, res.terminalEnd, stroke, true, nullptr,
+                                  res.bodyStartRatio, res.bodyEndRatio);
     }
 
     return {};
 }
 
 auto CustomShapeManager::snapShape(const CircuitTemplate* tpl, const Point& startPt, const Point& endPt,
-                                   const Stroke* styleSource, bool orthoSnap, SnapToGridInputHandler* snappingHandler)
-        -> std::unique_ptr<Stroke> {
-    return CircuitSnapper::snapCircuit(tpl, startPt, endPt, styleSource, orthoSnap, snappingHandler);
+                                   const Stroke* styleSource, bool orthoSnap, SnapToGridInputHandler* snappingHandler,
+                                   double bodyStartRatio, double bodyEndRatio) -> std::unique_ptr<Stroke> {
+    return CircuitSnapper::snapCircuit(tpl, startPt, endPt, styleSource, orthoSnap, snappingHandler, bodyStartRatio, bodyEndRatio);
 }
 
 auto CustomShapeManager::snapShapeComposite(const CircuitTemplate* tpl, const Point& startPt, const Point& endPt,
                                             const Stroke* styleSource, bool orthoSnap,
-                                            SnapToGridInputHandler* snappingHandler)
+                                            SnapToGridInputHandler* snappingHandler,
+                                            double bodyStartRatio, double bodyEndRatio)
         -> std::vector<std::unique_ptr<Stroke>> {
-    return CircuitSnapper::snapCircuitComposite(tpl, startPt, endPt, styleSource, orthoSnap, snappingHandler);
+    return CircuitSnapper::snapCircuitComposite(tpl, startPt, endPt, styleSource, orthoSnap, snappingHandler,
+                                                bodyStartRatio, bodyEndRatio);
 }
 
 }  // namespace xoj::circuit

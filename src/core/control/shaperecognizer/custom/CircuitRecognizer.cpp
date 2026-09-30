@@ -55,6 +55,10 @@ auto CircuitRecognizer::recognize(const Stroke* stroke,
                 result.reversed = false;
                 result.terminalStart = startPt;
                 result.terminalEnd = endPt;
+                if (feat.hasOscillatingBody && feat.bodyEndU > feat.bodyStartU + 0.10) {
+                    result.bodyStartRatio = feat.bodyStartU;
+                    result.bodyEndRatio = feat.bodyEndU;
+                }
                 return result;
             }
         }
@@ -67,6 +71,24 @@ auto CircuitRecognizer::recognize(const Stroke* stroke,
                 result.reversed = false;
                 result.terminalStart = startPt;
                 result.terminalEnd = endPt;
+                if (feat.hasOscillatingBody && feat.bodyEndU > feat.bodyStartU + 0.10) {
+                    result.bodyStartRatio = feat.bodyStartU;
+                    result.bodyEndRatio = feat.bodyEndU;
+                }
+                return result;
+            }
+        }
+    } else if (featClass == CircuitFeatureClass::Ground) {
+        for (const auto& tpl: templates) {
+            if (tpl && tpl->isEnabled() && tpl->getId() == "ground") {
+                Point topPt, botPt;
+                CircuitFeatureClassifier::detectSingleStrokeGround(stroke, topPt, botPt);
+                result.matched = true;
+                result.matchedTemplate = tpl.get();
+                result.score = 0.95;
+                result.reversed = false;
+                result.terminalStart = topPt;
+                result.terminalEnd = botPt;
                 return result;
             }
         }
@@ -238,7 +260,8 @@ auto CircuitRecognizer::recognize(const Stroke* stroke,
             }
 
             // Sinuosity check for oscillating components (resistor, inductor)
-            if (tpl->getSinuosity() > 1.30 && strokeSinuosity < 1.15 && maxPerpDev < 3.0) {
+            double effectiveSinuosity = feat.hasOscillatingBody ? std::max(strokeSinuosity, feat.bodySinuosity) : strokeSinuosity;
+            if (tpl->getSinuosity() > 1.30 && effectiveSinuosity < 1.10 && maxPerpDev < 3.0) {
                 continue;
             }
 

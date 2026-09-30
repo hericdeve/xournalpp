@@ -47,10 +47,12 @@ public:
             -> std::vector<std::unique_ptr<Stroke>>;
 
     auto snapShape(const CircuitTemplate* tpl, const Point& startPt, const Point& endPt, const Stroke* styleSource,
-                   bool orthoSnap = true, SnapToGridInputHandler* snappingHandler = nullptr) -> std::unique_ptr<Stroke>;
+                   bool orthoSnap = true, SnapToGridInputHandler* snappingHandler = nullptr,
+                   double bodyStartRatio = 0.0, double bodyEndRatio = 0.0) -> std::unique_ptr<Stroke>;
 
     auto snapShapeComposite(const CircuitTemplate* tpl, const Point& startPt, const Point& endPt, const Stroke* styleSource,
-                            bool orthoSnap = true, SnapToGridInputHandler* snappingHandler = nullptr)
+                            bool orthoSnap = true, SnapToGridInputHandler* snappingHandler = nullptr,
+                            double bodyStartRatio = 0.0, double bodyEndRatio = 0.0)
             -> std::vector<std::unique_ptr<Stroke>>;
 
 private:

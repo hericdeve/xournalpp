@@ -27,6 +27,8 @@ struct CircuitRecognitionResult {
     Point terminalEnd{0.0, 0.0};
     double score{0.0};
     bool reversed{false};
+    double bodyStartRatio{0.20};
+    double bodyEndRatio{0.80};
 };
 
 class CircuitRecognizer {
