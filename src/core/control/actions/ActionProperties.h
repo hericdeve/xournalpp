@@ -18,6 +18,7 @@
 #include "control/zoom/ZoomControl.h"
 #include "gui/MainWindow.h"
 #include "gui/dialog/PresetNameDialog.h"
+#include "control/shaperecognizer/custom/AutoShapeSelection.h"
 #include "enums/Action.enum.h"
 #include "gui/MainWindow.h"
 #include "gui/SearchBar.h"
@@ -232,6 +233,13 @@ struct ActionProperties<Action::MOVE_SELECTION_LAYER_DOWN> {
             // therefore the new layer is "layerid - 1 - 1"
             ctrl->moveSelectionToLayer(ctrl->getCurrentPage()->getSelectedLayerId() - 2);
         }
+    }
+};
+
+template <>
+struct ActionProperties<Action::AUTO_SHAPE_SELECTION> {
+    static void callback(GSimpleAction*, GVariant*, Control* ctrl) {
+        xoj::circuit::AutoShapeSelection::autoShapeSelectedContent(ctrl);
     }
 };
 

@@ -153,10 +153,31 @@ auto CustomShapeManager::recognize(const Stroke* stroke, CircuitRecognitionResul
     return nullptr;
 }
 
+auto CustomShapeManager::recognizeComposite(const Stroke* stroke, CircuitRecognitionResult* outResult, double threshold)
+        -> std::vector<std::unique_ptr<Stroke>> {
+    auto res = CircuitRecognizer::recognize(stroke, templates, threshold);
+    if (outResult) {
+        *outResult = res;
+    }
+
+    if (res.matched && res.matchedTemplate) {
+        return snapShapeComposite(res.matchedTemplate, res.terminalStart, res.terminalEnd, stroke, true);
+    }
+
+    return {};
+}
+
 auto CustomShapeManager::snapShape(const CircuitTemplate* tpl, const Point& startPt, const Point& endPt,
                                    const Stroke* styleSource, bool orthoSnap, SnapToGridInputHandler* snappingHandler)
         -> std::unique_ptr<Stroke> {
     return CircuitSnapper::snapCircuit(tpl, startPt, endPt, styleSource, orthoSnap, snappingHandler);
+}
+
+auto CustomShapeManager::snapShapeComposite(const CircuitTemplate* tpl, const Point& startPt, const Point& endPt,
+                                            const Stroke* styleSource, bool orthoSnap,
+                                            SnapToGridInputHandler* snappingHandler)
+        -> std::vector<std::unique_ptr<Stroke>> {
+    return CircuitSnapper::snapCircuitComposite(tpl, startPt, endPt, styleSource, orthoSnap, snappingHandler);
 }
 
 }  // namespace xoj::circuit

@@ -43,8 +43,15 @@ public:
     auto recognize(const Stroke* stroke, CircuitRecognitionResult* outResult = nullptr, double threshold = 0.65)
             -> std::unique_ptr<Stroke>;
 
+    auto recognizeComposite(const Stroke* stroke, CircuitRecognitionResult* outResult = nullptr, double threshold = 0.65)
+            -> std::vector<std::unique_ptr<Stroke>>;
+
     auto snapShape(const CircuitTemplate* tpl, const Point& startPt, const Point& endPt, const Stroke* styleSource,
                    bool orthoSnap = true, SnapToGridInputHandler* snappingHandler = nullptr) -> std::unique_ptr<Stroke>;
+
+    auto snapShapeComposite(const CircuitTemplate* tpl, const Point& startPt, const Point& endPt, const Stroke* styleSource,
+                            bool orthoSnap = true, SnapToGridInputHandler* snappingHandler = nullptr)
+            -> std::vector<std::unique_ptr<Stroke>>;
 
 private:
     std::vector<std::shared_ptr<CircuitTemplate>> templates;

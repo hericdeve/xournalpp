@@ -227,6 +227,8 @@ void StrokeHandler::triggerHoldShapeRecognition() {
         this->recognizedCircuitTemplate = circuitTpl;
         this->circuitTerminalStart = cTermStart;
         this->circuitTerminalEnd = cTermEnd;
+        Rectangle<double> bbox = this->baseRecognizedStroke->getBoundingBox();
+        this->shapeCenter = Point(bbox.x + bbox.width / 2.0, bbox.y + bbox.height / 2.0);
     } else {
         this->recognizedCircuitTemplate = nullptr;
         const auto& pts = this->baseRecognizedStroke->getPointVector();
@@ -263,13 +265,27 @@ void StrokeHandler::handleHoldMotion(const Point& currentPoint) {
     auto updated = this->baseRecognizedStroke->cloneStroke();
 
     if (this->recognizedType == RecognizedShapeType::Circuit && this->recognizedCircuitTemplate) {
-        // Circuit: end terminal tracks currentPoint with dynamic snapping & lead stretching
-        auto customMgr = this->control->getCustomShapeManager();
-        if (customMgr) {
-            auto snappedCircuit = customMgr->snapShape(this->recognizedCircuitTemplate, this->circuitTerminalStart,
-                                                      currentPoint, this->baseRecognizedStroke.get(), true, &this->snappingHandler);
-            if (snappedCircuit) {
-                updated = std::move(snappedCircuit);
+        if (this->recognizedCircuitTemplate->isClosed()) {
+            // Closed custom shape: scale relative to center based on distance ratio from snap point
+            double initialDist = this->holdSnapPoint.lineLengthTo(this->shapeCenter);
+            double currentDist = currentPoint.lineLengthTo(this->shapeCenter);
+
+            if (initialDist > 5.0 && currentDist > 5.0) {
+                double scale = currentDist / initialDist;
+                if (scale > 0.05 && scale < 20.0) {
+                    bool restoreLineWidth = this->control->getSettings()->getRestoreLineWidthEnabled();
+                    updated->scale(this->shapeCenter.x, this->shapeCenter.y, scale, scale, 0, restoreLineWidth);
+                }
+            }
+        } else {
+            // Two-terminal or directional component: end terminal tracks currentPoint with dynamic scaling & snapping
+            auto customMgr = this->control->getCustomShapeManager();
+            if (customMgr) {
+                auto snappedCircuit = customMgr->snapShape(this->recognizedCircuitTemplate, this->circuitTerminalStart,
+                                                          currentPoint, this->baseRecognizedStroke.get(), true, &this->snappingHandler);
+                if (snappedCircuit) {
+                    updated = std::move(snappedCircuit);
+                }
             }
         }
     } else if (this->recognizedType == RecognizedShapeType::Line) {

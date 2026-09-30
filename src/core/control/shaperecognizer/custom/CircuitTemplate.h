@@ -17,8 +17,11 @@
 
 #include "control/shaperecognizer/svg/SvgPathParser.h"
 #include "model/Point.h"
+#include "util/Rectangle.h"
 
 namespace xoj::circuit {
+
+enum class TemplateKind { TwoTerminal, ClosedShape, OpenPath };
 
 class CircuitTemplate {
 public:
@@ -34,6 +37,9 @@ public:
     [[nodiscard]] auto isEnabled() const -> bool { return enabled; }
     void setEnabled(bool en) { enabled = en; }
 
+    [[nodiscard]] auto getKind() const -> TemplateKind { return kind; }
+    [[nodiscard]] auto isClosed() const -> bool { return kind == TemplateKind::ClosedShape; }
+
     [[nodiscard]] auto getSubpaths() const -> const std::vector<xoj::svg::SvgSubpath>& { return subpaths; }
     [[nodiscard]] auto getCombinedPath() const -> const std::vector<Point>& { return combinedPath; }
 
@@ -43,7 +49,12 @@ public:
     [[nodiscard]] auto getBodyStartOffset() const -> double { return bodyStartOffset; }
     [[nodiscard]] auto getBodyEndOffset() const -> double { return bodyEndOffset; }
     [[nodiscard]] auto getBodyWidth() const -> double { return bodyWidth; }
+    [[nodiscard]] auto getTemplateHeight() const -> double { return templateHeight; }
+    [[nodiscard]] auto getTemplateBbox() const -> const xoj::util::Rectangle<double>& { return templateBbox; }
+    [[nodiscard]] auto getCentroid() const -> const Point& { return centroid; }
 
+    [[nodiscard]] auto getBodyCloud() const -> const std::vector<Point>& { return bodyCloud; }
+    [[nodiscard]] auto getMaxBodyDeviation() const -> double { return maxBodyDeviation; }
     [[nodiscard]] auto getNormalizedCloud() const -> const std::vector<Point>& { return normalizedCloud; }
     [[nodiscard]] auto getSinuosity() const -> double { return sinuosity; }
 
@@ -55,6 +66,7 @@ private:
     std::string id;
     std::string displayName;
     bool enabled{true};
+    TemplateKind kind{TemplateKind::TwoTerminal};
 
     std::vector<xoj::svg::SvgSubpath> subpaths;
     std::vector<Point> combinedPath;
@@ -65,8 +77,14 @@ private:
     double bodyStartOffset{20.0};
     double bodyEndOffset{80.0};
     double bodyWidth{60.0};
+    double templateHeight{24.0};
+    double maxBodyDeviation{12.0};
+
+    xoj::util::Rectangle<double> templateBbox{0.0, 0.0, 100.0, 30.0};
+    Point centroid{50.0, 15.0};
 
     std::vector<Point> normalizedCloud;
+    std::vector<Point> bodyCloud;
     double sinuosity{1.0};
 };
 

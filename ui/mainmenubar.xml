@@ -148,6 +148,13 @@
    </section>
    <section>
     <item>
+     <attribute name="label" translatable="yes">Auto Shape Selection</attribute>
+     <attribute name="action">win.auto-shape-selection</attribute>
+     <attribute name="accel">&lt;Primary&gt;&lt;Alt&gt;k</attribute>
+    </item>
+   </section>
+   <section>
+    <item>
      <attribute name="label" translatable="yes">Rotation Snapping</attribute>
      <attribute name="action">win.rotation-snapping</attribute>
     </item>

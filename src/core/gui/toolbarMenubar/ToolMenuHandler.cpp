@@ -424,6 +424,8 @@ void ToolMenuHandler::initToolItems() {
 
     emplaceCustomItemTgl("SHAPE_RECOGNIZER", Cat::TOOLS, Action::TOOL_DRAW_SHAPE_RECOGNIZER, "shape-recognizer",
                          _("Shape Recognizer"));
+    emplaceCustomItem("AUTO_SHAPE_SELECTION", Cat::TOOLS, Action::AUTO_SHAPE_SELECTION, "auto-shape-selection",
+                      _("Auto Shape Selection"));
     emplaceCustomItemTgl("DRAW_RECTANGLE", Cat::TOOLS, Action::TOOL_DRAW_RECTANGLE, "draw-rect", _("Draw Rectangle"));
     emplaceCustomItemTgl("DRAW_ELLIPSE", Cat::TOOLS, Action::TOOL_DRAW_ELLIPSE, "draw-ellipse", _("Draw Ellipse"));
     emplaceCustomItemTgl("DRAW_ARROW", Cat::TOOLS, Action::TOOL_DRAW_ARROW, "draw-arrow", _("Draw Arrow"));

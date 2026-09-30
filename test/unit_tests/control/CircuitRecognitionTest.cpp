@@ -96,3 +96,76 @@ TEST(CircuitSnapperTest, testAngleAndLeadStretching) {
     EXPECT_NEAR(snappedStroke->getPointVector().front().x, 50.0, 0.1);
     EXPECT_NEAR(snappedStroke->getPointVector().back().x, 250.0, 0.1);
 }
+
+TEST(CircuitRecognizerTest, testSmallAndLargeResistorRecognition) {
+    CustomShapeManager mgr;
+
+    // 1. Small resistor: 35px total span from (10, 10) to (45, 10)
+    auto smallStroke = std::make_unique<Stroke>();
+    smallStroke->setWidth(1.5);
+    smallStroke->addPoint(Point(10.0, 10.0));
+    smallStroke->addPoint(Point(14.0, 10.0));
+    // zig-zags
+    smallStroke->addPoint(Point(17.0, 5.0));
+    smallStroke->addPoint(Point(21.0, 15.0));
+    smallStroke->addPoint(Point(25.0, 5.0));
+    smallStroke->addPoint(Point(29.0, 15.0));
+    smallStroke->addPoint(Point(33.0, 5.0));
+    smallStroke->addPoint(Point(37.0, 15.0));
+    smallStroke->addPoint(Point(41.0, 10.0));
+    smallStroke->addPoint(Point(45.0, 10.0));
+
+    CircuitRecognitionResult smallRes;
+    auto smallRecognized = mgr.recognize(smallStroke.get(), &smallRes, 0.55);
+    ASSERT_TRUE(smallRes.matched);
+    ASSERT_NE(smallRes.matchedTemplate, nullptr);
+    EXPECT_EQ(smallRes.matchedTemplate->getId(), "resistor_ieee");
+    ASSERT_NE(smallRecognized, nullptr);
+
+    // 2. Large resistor: 450px total span from (50, 200) to (500, 200)
+    auto largeStroke = std::make_unique<Stroke>();
+    largeStroke->setWidth(2.5);
+    for (double x = 50.0; x <= 120.0; x += 10.0) {
+        largeStroke->addPoint(Point(x, 200.0));
+    }
+    // large zig-zags
+    largeStroke->addPoint(Point(150.0, 150.0));
+    largeStroke->addPoint(Point(200.0, 250.0));
+    largeStroke->addPoint(Point(250.0, 150.0));
+    largeStroke->addPoint(Point(300.0, 250.0));
+    largeStroke->addPoint(Point(350.0, 150.0));
+    largeStroke->addPoint(Point(400.0, 250.0));
+    for (double x = 420.0; x <= 500.0; x += 10.0) {
+        largeStroke->addPoint(Point(x, 200.0));
+    }
+
+    CircuitRecognitionResult largeRes;
+    auto largeRecognized = mgr.recognize(largeStroke.get(), &largeRes, 0.55);
+    ASSERT_TRUE(largeRes.matched);
+    ASSERT_NE(largeRes.matchedTemplate, nullptr);
+    EXPECT_EQ(largeRes.matchedTemplate->getId(), "resistor_ieee");
+    ASSERT_NE(largeRecognized, nullptr);
+}
+
+TEST(CircuitSnapperTest, testSnappingScalesWithDistance) {
+    CustomShapeManager mgr;
+    auto tpl = mgr.getTemplateById("resistor_ieee");
+    ASSERT_NE(tpl, nullptr);
+
+    Stroke style;
+    style.setWidth(2.0);
+
+    // Small snapped resistor: distance = 40
+    auto small = CircuitSnapper::snapCircuit(tpl, Point(0, 0), Point(40, 0), &style, false);
+    ASSERT_NE(small, nullptr);
+    auto smallBbox = small->getBoundingBox();
+
+    // Large snapped resistor: distance = 400
+    auto large = CircuitSnapper::snapCircuit(tpl, Point(0, 0), Point(400, 0), &style, false);
+    ASSERT_NE(large, nullptr);
+    auto largeBbox = large->getBoundingBox();
+
+    // The large resistor body must be significantly taller and wider than the small resistor!
+    EXPECT_GT(largeBbox.height, smallBbox.height * 2.0);
+    EXPECT_GT(largeBbox.width, smallBbox.width * 5.0);
+}

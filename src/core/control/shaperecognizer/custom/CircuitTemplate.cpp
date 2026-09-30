@@ -15,8 +15,11 @@
 #include <cmath>
 
 #include "util/PathUtil.h"
+#include "util/Rectangle.h"
 
 namespace xoj::circuit {
+
+using xoj::util::Rectangle;
 
 CircuitTemplate::CircuitTemplate(std::string id, std::string displayName, xoj::svg::SvgDocument doc):
         id(std::move(id)), displayName(std::move(displayName)) {
@@ -103,14 +106,42 @@ void CircuitTemplate::initFromDocument(const xoj::svg::SvgDocument& doc) {
         return;
     }
 
+    // Compute bounding box and centroid
+    double minX = std::numeric_limits<double>::infinity();
+    double maxX = -std::numeric_limits<double>::infinity();
+    double minY = std::numeric_limits<double>::infinity();
+    double maxY = -std::numeric_limits<double>::infinity();
+    double sumX = 0.0;
+    double sumY = 0.0;
+
+    for (const auto& pt: this->combinedPath) {
+        minX = std::min(minX, pt.x);
+        maxX = std::max(maxX, pt.x);
+        minY = std::min(minY, pt.y);
+        maxY = std::max(maxY, pt.y);
+        sumX += pt.x;
+        sumY += pt.y;
+    }
+
+    this->templateBbox = Rectangle<double>(minX, minY, std::max(maxX - minX, 1.0), std::max(maxY - minY, 1.0));
+    this->centroid = Point(sumX / static_cast<double>(this->combinedPath.size()),
+                           sumY / static_cast<double>(this->combinedPath.size()));
+    this->templateHeight = this->templateBbox.height;
+
     // Terminal A: start of first subpath
     this->terminalA = this->combinedPath.front();
     // Terminal B: end of last subpath
     this->terminalB = this->combinedPath.back();
 
-    this->nominalLength = this->terminalA.lineLengthTo(this->terminalB);
-    if (this->nominalLength < 1.0) {
-        this->nominalLength = 1.0;
+    double termDist = this->terminalA.lineLengthTo(this->terminalB);
+    double diag = std::hypot(this->templateBbox.width, this->templateBbox.height);
+
+    if (termDist < 0.20 * diag || (this->subpaths.size() == 1 && this->subpaths.front().closed)) {
+        this->kind = TemplateKind::ClosedShape;
+        this->nominalLength = diag;
+    } else {
+        this->kind = TemplateKind::TwoTerminal;
+        this->nominalLength = std::max(termDist, 1.0);
     }
 
     // Baseline direction
@@ -158,12 +189,50 @@ void CircuitTemplate::initFromDocument(const xoj::svg::SvgDocument& doc) {
     this->normalizedCloud.clear();
     this->normalizedCloud.reserve(resampled.size());
 
-    for (const auto& pt: resampled) {
+    if (this->kind == TemplateKind::ClosedShape) {
+        // Closed shape normalized cloud: relative to centroid and diagonal size
+        for (const auto& pt: resampled) {
+            double nx = (pt.x - this->centroid.x) / diag;
+            double ny = (pt.y - this->centroid.y) / diag;
+            this->normalizedCloud.emplace_back(nx, ny);
+        }
+    } else {
+        // Two-terminal cloud: relative to terminal axis
+        for (const auto& pt: resampled) {
+            double px = pt.x - this->terminalA.x;
+            double py = pt.y - this->terminalA.y;
+            double u = (cosA * px - sinA * py) / this->nominalLength;
+            double v = (sinA * px + cosA * py) / this->nominalLength;
+            this->normalizedCloud.emplace_back(u, v);
+        }
+    }
+
+    // Build normalized body cloud (for scale-independent and lead-independent two-terminal matching)
+    double maxDev = 0.0;
+    std::vector<Point> rawBodyPts;
+    for (const auto& pt: this->combinedPath) {
         double px = pt.x - this->terminalA.x;
         double py = pt.y - this->terminalA.y;
-        double u = (cosA * px - sinA * py) / this->nominalLength;
-        double v = (sinA * px + cosA * py) / this->nominalLength;
-        this->normalizedCloud.emplace_back(u, v);
+        double u = cosA * px - sinA * py;
+        double v = sinA * px + cosA * py;
+        if (u >= this->bodyStartOffset - 1e-4 && u <= this->bodyEndOffset + 1e-4) {
+            rawBodyPts.emplace_back(u, v);
+            maxDev = std::max(maxDev, std::abs(v));
+        }
+    }
+    if (rawBodyPts.size() < 2) {
+        rawBodyPts.emplace_back(this->bodyStartOffset, 0.0);
+        rawBodyPts.emplace_back(this->bodyEndOffset, 0.0);
+    }
+    this->maxBodyDeviation = (maxDev > 1e-4) ? maxDev : 12.0;
+
+    auto resampledBody = resampleEquidistant(rawBodyPts, 32);
+    this->bodyCloud.clear();
+    this->bodyCloud.reserve(resampledBody.size());
+    for (const auto& pt: resampledBody) {
+        double unorm = (this->bodyWidth > 1e-4) ? ((pt.x - this->bodyStartOffset) / this->bodyWidth) : 0.0;
+        double vnorm = (this->maxBodyDeviation > 1e-4) ? (pt.y / this->maxBodyDeviation) : 0.0;
+        this->bodyCloud.emplace_back(unorm, vnorm);
     }
 }
 

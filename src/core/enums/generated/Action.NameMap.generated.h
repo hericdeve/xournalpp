@@ -25,6 +25,7 @@ constexpr const char* ACTION_NAMES[] = {  // Action to string conversion map
         "delete",
         "move-selection-layer-up",
         "move-selection-layer-down",
+        "auto-shape-selection",
         "rotation-snapping",
         "grid-snapping",
         "preferences",

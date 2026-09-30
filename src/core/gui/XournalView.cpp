@@ -667,6 +667,7 @@ void XournalView::clearSelection() {
 
     getCursor()->setMouseSelectionType(CURSOR_SELECTION_NONE);
     control->getToolHandler()->setSelectionEditTools(false, false, false, false);
+    control->getActionDatabase()->enableAction(Action::AUTO_SHAPE_SELECTION, false);
 }
 
 void XournalView::deleteSelection(EditSelection* sel) {
@@ -695,6 +696,7 @@ void XournalView::setSelection(EditSelection* selection) {
     bool canChangeColor = false;
     bool canChangeFill = false;
     bool canChangeLineStyle = false;
+    bool hasStrokes = false;
 
     for (const Element* e: selection->getElementsView()) {
         switch (e->getType()) {
@@ -702,6 +704,7 @@ void XournalView::setSelection(EditSelection* selection) {
                 canChangeColor = true;
                 continue;
             case ELEMENT_STROKE: {
+                hasStrokes = true;
                 canChangeSize = true;
 
                 const auto* s = dynamic_cast<const Stroke*>(e);
@@ -726,6 +729,7 @@ void XournalView::setSelection(EditSelection* selection) {
         break;
     }
 
+    control->getActionDatabase()->enableAction(Action::AUTO_SHAPE_SELECTION, hasStrokes);
     control->getToolHandler()->setSelectionEditTools(canChangeColor, canChangeSize, canChangeFill, canChangeLineStyle);
 
     repaintSelection();
