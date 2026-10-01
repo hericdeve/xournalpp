@@ -27,13 +27,11 @@ auto CircuitDecomposer::clusterTextBlocks(const std::vector<Stroke*>& candidates
 
         auto box = s->getBoundingBox();
         double maxDim = std::max(box.width, box.height);
-        double minDim = std::min(box.width, box.height);
-        double aspect = (minDim > 0.0) ? (maxDim / minDim) : 100.0;
 
-        // Characters typically fit in a 42x42 box with moderate aspect ratio
-        if (maxDim <= 42.0 && aspect <= 3.0) {
+        // Characters, digits (like '1', '7', 'I', '-'), and annotations typically fit in a 45x45 box
+        if (maxDim <= 45.0) {
             auto feat = CircuitFeatureClassifier::extractFeatures(s);
-            if (feat.chordLength <= 40.0) {
+            if (feat.chordLength <= 45.0) {
                 charCandidates.push_back(s);
             }
         }
@@ -98,19 +96,29 @@ auto CircuitDecomposer::clusterTextBlocks(const std::vector<Stroke*>& candidates
             }
         }
 
-        // Check if component has at least one stroke exhibiting handwriting characteristics,
-        // or is a single character stroke
-        bool hasHandwriting = false;
-        for (size_t idx: component) {
-            if (CircuitFeatureClassifier::isHandwritingOrAnnotation(charCandidates[idx])) {
-                hasHandwriting = true;
-                break;
-            }
-        }
-
-        if (hasHandwriting || component.size() >= 2) {
+        if (component.size() >= 2) {
+            // Multi-character word or number cluster ("R1", "22K", "RE", "1,5", "RC", "2K", "34K"):
+            // Protect all strokes in this text cluster (including commas and decimal points)
             for (size_t idx: component) {
                 protectedStrokes.insert(charCandidates[idx]);
+            }
+        } else if (component.size() == 1) {
+            Stroke* s = charCandidates[component[0]];
+            auto bbox = s->getBoundingBox();
+            double diag = std::hypot(bbox.width, bbox.height);
+
+            // Single isolated stroke: protect if it is a character or cursive annotation
+            if (diag > 22.0) {
+                if (CircuitFeatureClassifier::isHandwritingOrAnnotation(s)) {
+                    protectedStrokes.insert(s);
+                }
+            } else {
+                // For tiny strokes (diag <= 22.0), only protect if it has cursive sinuosity.
+                // Simple dots or small loops are left available as candidate circuit node markers.
+                auto feat = CircuitFeatureClassifier::extractFeatures(s);
+                if (feat.sinuosity > 1.35) {
+                    protectedStrokes.insert(s);
+                }
             }
         }
     }
@@ -172,7 +180,7 @@ auto CircuitDecomposer::computeAverageVertexAngle(const Stroke* stroke) -> doubl
     for (size_t i = 0; i < count; ++i) {
         sum += angles[i];
     }
-    return sum / count;
+    return sum / static_cast<double>(count);
 }
 
 auto CircuitDecomposer::decomposeCompoundStroke(const Stroke* stroke) -> std::vector<DecomposedStrokePart> {
@@ -259,6 +267,127 @@ auto CircuitDecomposer::decomposeCompoundStroke(const Stroke* stroke) -> std::ve
     }
 
     return parts;
+}
+
+auto CircuitDecomposer::splitStrokeAtPoints(const Stroke* stroke,
+                                            const std::vector<Point>& splitPoints,
+                                            double maxDist,
+                                            double minEndpointDist)
+        -> std::vector<std::unique_ptr<Stroke>> {
+    std::vector<std::unique_ptr<Stroke>> result;
+    if (!stroke || stroke->getPointCount() < 2 || splitPoints.empty()) {
+        return result;
+    }
+
+    const auto& pts = stroke->getPointVector();
+
+    // Check if stroke is relatively straight wire rather than oscillating component
+    auto feat = CircuitFeatureClassifier::extractFeatures(stroke);
+    if (feat.sinuosity > 1.25 || feat.alternatingExtremaCount > 0) {
+        return result; // Do not split components
+    }
+
+    struct SplitCandidate {
+        size_t segIdx;
+        Point proj;
+        double distAlongStroke;
+    };
+    std::vector<SplitCandidate> candidates;
+
+    // Cumulative length array
+    std::vector<double> cumLen(pts.size(), 0.0);
+    for (size_t i = 1; i < pts.size(); ++i) {
+        cumLen[i] = cumLen[i - 1] + pts[i - 1].lineLengthTo(pts[i]);
+    }
+    double totalLen = cumLen.back();
+
+    for (const auto& sp: splitPoints) {
+        double bestDist = maxDist;
+        size_t bestSeg = 0;
+        Point bestProj;
+        bool found = false;
+
+        for (size_t i = 0; i + 1 < pts.size(); ++i) {
+            Point a = pts[i];
+            Point b = pts[i + 1];
+            double segDx = b.x - a.x;
+            double segDy = b.y - a.y;
+            double segLenSq = segDx * segDx + segDy * segDy;
+            if (segLenSq < 1e-4) continue;
+
+            double t = std::clamp(((sp.x - a.x) * segDx + (sp.y - a.y) * segDy) / segLenSq, 0.0, 1.0);
+            Point proj(a.x + t * segDx, a.y + t * segDy);
+            double d = sp.lineLengthTo(proj);
+
+            if (d <= bestDist) {
+                double distAlong = cumLen[i] + a.lineLengthTo(proj);
+                if (distAlong >= minEndpointDist && (totalLen - distAlong) >= minEndpointDist) {
+                    bestDist = d;
+                    bestSeg = i;
+                    bestProj = proj;
+                    found = true;
+                }
+            }
+        }
+
+        if (found) {
+            double distAlong = cumLen[bestSeg] + pts[bestSeg].lineLengthTo(bestProj);
+            candidates.push_back({bestSeg, bestProj, distAlong});
+        }
+    }
+
+    if (candidates.empty()) {
+        return result;
+    }
+
+    // Sort candidates along the stroke
+    std::sort(candidates.begin(), candidates.end(), [](const SplitCandidate& a, const SplitCandidate& b) {
+        return a.distAlongStroke < b.distAlongStroke;
+    });
+
+    // Remove duplicates that are too close to each other
+    std::vector<SplitCandidate> uniqueSplits;
+    for (const auto& c: candidates) {
+        if (uniqueSplits.empty() || (c.distAlongStroke - uniqueSplits.back().distAlongStroke) >= minEndpointDist) {
+            uniqueSplits.push_back(c);
+        }
+    }
+
+    // Build sub-stroke segments
+    size_t curPtIdx = 0;
+    for (size_t sIdx = 0; sIdx <= uniqueSplits.size(); ++sIdx) {
+        auto sub = std::make_unique<Stroke>();
+        sub->applyStyleFrom(stroke);
+
+        if (sIdx == 0) {
+            // From pts[0] up to uniqueSplits[0].proj
+            for (size_t i = 0; i <= uniqueSplits[0].segIdx; ++i) {
+                sub->addPoint(pts[i]);
+            }
+            sub->addPoint(uniqueSplits[0].proj);
+            curPtIdx = uniqueSplits[0].segIdx + 1;
+        } else if (sIdx == uniqueSplits.size()) {
+            // From uniqueSplits.back().proj to pts.back()
+            sub->addPoint(uniqueSplits.back().proj);
+            for (size_t i = curPtIdx; i < pts.size(); ++i) {
+                sub->addPoint(pts[i]);
+            }
+        } else {
+            // From uniqueSplits[sIdx-1].proj to uniqueSplits[sIdx].proj
+            sub->addPoint(uniqueSplits[sIdx - 1].proj);
+            for (size_t i = curPtIdx; i <= uniqueSplits[sIdx].segIdx; ++i) {
+                sub->addPoint(pts[i]);
+            }
+            sub->addPoint(uniqueSplits[sIdx].proj);
+            curPtIdx = uniqueSplits[sIdx].segIdx + 1;
+        }
+
+        if (sub->getPointCount() >= 2) {
+            result.push_back(std::move(sub));
+        }
+    }
+
+    return result;
 }
 
 }  // namespace xoj::circuit

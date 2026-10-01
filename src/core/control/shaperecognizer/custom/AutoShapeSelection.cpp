@@ -259,7 +259,8 @@ auto detectMultiStrokeGrounds(const std::vector<Stroke*>& candidates) -> std::ve
  * Snaps wire endpoints that meet perpendicular straight rails into clean 90-degree T-junctions,
  * extending the rail slightly if needed to guarantee physical contact.
  */
-void applyTJunctionSnapping(const std::vector<Element*>& newlyShapedElements) {
+void applyTJunctionSnapping(const std::vector<Element*>& newlyShapedElements,
+                            const std::set<Stroke*>& componentStrokes) {
     struct RailSegment {
         Stroke* stroke;
         size_t segIdx;
@@ -273,8 +274,8 @@ void applyTJunctionSnapping(const std::vector<Element*>& newlyShapedElements) {
 
     for (Element* elem: newlyShapedElements) {
         auto* s = static_cast<Stroke*>(elem);
-        // Only consider simple 2-point wire segments as rails
-        if (s->getPointCount() != 2) continue;
+        // Only consider simple 2-point wire segments as rails (never components, grounds, etc.)
+        if (componentStrokes.count(s) || s->getPointCount() != 2) continue;
 
         const auto& pts = s->getPointVector();
         Point a = pts[0];
@@ -283,7 +284,7 @@ void applyTJunctionSnapping(const std::vector<Element*>& newlyShapedElements) {
         double dy = std::abs(b.y - a.y);
         double len = std::hypot(b.x - a.x, b.y - a.y);
 
-        if (len >= 25.0) {
+        if (len >= 20.0) {
             if (dy < 1.0) {
                 rails.push_back({s, 0, a, b, true, false});
             } else if (dx < 1.0) {
@@ -298,11 +299,11 @@ void applyTJunctionSnapping(const std::vector<Element*>& newlyShapedElements) {
 
     for (Element* elem: newlyShapedElements) {
         auto* s = static_cast<Stroke*>(elem);
-        // Do not alter complex composite or multi-stroke components
-        if (s->getPointCount() > 2) continue;
+        // Do not alter components
+        if (componentStrokes.count(s)) continue;
 
         auto pts = s->getPointVector();
-        if (pts.size() != 2) continue;
+        if (pts.size() < 2) continue;
 
         bool modified = false;
 
@@ -337,6 +338,67 @@ void applyTJunctionSnapping(const std::vector<Element*>& newlyShapedElements) {
                         pt.x = railX;
                         modified = true;
                         break;
+                    }
+                }
+            }
+        }
+
+        if (modified) {
+            s->setPointVector(std::move(pts));
+        }
+    }
+}
+
+struct TerminalAnchor {
+    Point pt;
+    Point normal;
+    bool isCardinal = false;
+};
+
+void dockWiresToAnchors(const std::vector<Element*>& newlyShapedElements,
+                        const std::set<Stroke*>& componentStrokes,
+                        const std::vector<TerminalAnchor>& anchors) {
+    if (anchors.empty()) return;
+    constexpr double DOCK_RADIUS_SQ = 24.0 * 24.0;
+
+    for (Element* elem: newlyShapedElements) {
+        auto* s = static_cast<Stroke*>(elem);
+        if (componentStrokes.count(s)) continue;
+
+        auto pts = s->getPointVector();
+        if (pts.size() < 2) continue;
+
+        bool modified = false;
+
+        for (int endIdx = 0; endIdx < 2; ++endIdx) {
+            Point& pt = (endIdx == 0) ? pts.front() : pts.back();
+            Point& otherPt = (endIdx == 0) ? pts[1] : pts[pts.size() - 2];
+
+            const TerminalAnchor* bestAnchor = nullptr;
+            double bestDistSq = DOCK_RADIUS_SQ;
+
+            for (const auto& anchor: anchors) {
+                double dx = pt.x - anchor.pt.x;
+                double dy = pt.y - anchor.pt.y;
+                double distSq = dx * dx + dy * dy;
+                if (distSq <= bestDistSq) {
+                    bestDistSq = distSq;
+                    bestAnchor = &anchor;
+                }
+            }
+
+            if (bestAnchor) {
+                pt = bestAnchor->pt;
+                modified = true;
+
+                // For 2-point straight wires, preserve strict Manhattan orientation (0 or 90 deg)
+                if (pts.size() == 2) {
+                    double wireDx = std::abs(otherPt.x - pt.x);
+                    double wireDy = std::abs(otherPt.y - pt.y);
+                    if (wireDx >= wireDy * 2.0) {
+                        otherPt.y = pt.y;
+                    } else if (wireDy >= wireDx * 2.0) {
+                        otherPt.x = pt.x;
                     }
                 }
             }
@@ -487,10 +549,32 @@ auto AutoShapeSelection::autoShapeSelectedContent(Control* control) -> bool {
         anyRecognizable = true;
     }
 
+    if (!CircuitFeatureClassifier::detectParallelCapacitors(candidateStrokes).empty()) {
+        anyRecognizable = true;
+    }
+
+    if (!CircuitFeatureClassifier::detectBjtTransistors(candidateStrokes).empty()) {
+        anyRecognizable = true;
+    }
+
+    if (!CircuitFeatureClassifier::detectNodeMarkers(candidateStrokes, {}).empty()) {
+        anyRecognizable = true;
+    }
+
     if (!anyRecognizable) {
         for (Stroke* s: candidateStrokes) {
             if (s->getPointCount() < 2) {
                 continue;
+            }
+            Point topPt, botPt;
+            if (CircuitFeatureClassifier::detectSingleStrokeGround(s, topPt, botPt)) {
+                anyRecognizable = true;
+                break;
+            }
+            Point sStart, sTip;
+            if (CircuitFeatureClassifier::detectArrow(s, sStart, sTip)) {
+                anyRecognizable = true;
+                break;
             }
             if (customMgr && customMgr->recognize(s, nullptr, 0.60)) {
                 anyRecognizable = true;
@@ -540,75 +624,86 @@ auto AutoShapeSelection::autoShapeSelectedContent(Control* control) -> bool {
     std::vector<Element*> newlyShapedElements;
     std::set<Stroke*> consumedStrokes;
 
-    // 0. Primary Snip Recognition Pipeline: 2D Image Skeleton & Topology Extraction
-    // When multiple strokes are selected, analyze the 2D image as a whole to avoid
-    // stroke-order, pen-lift, or compound stroke artifacts.
-    if (customMgr && candidates.size() >= 3) {
-        auto snipResult = CircuitSnipRecognizer::processSnip(candidates, customMgr);
-        if (snipResult.success && !snipResult.strokesToInsert.empty()) {
-            auto delAction = std::make_unique<DeleteUndoAction>(page, false);
-            for (Stroke* sOrig: snipResult.strokesToRemove) {
-                std::lock_guard lock(*doc);
-                auto rem = layer->removeElement(sOrig);
-                if (rem.e) {
-                    delAction->addElement(layer, std::move(rem.e), rem.pos);
-                }
-            }
-            for (auto& sNew: snipResult.strokesToInsert) {
-                Stroke* ptr = sNew.get();
-                {
-                    std::lock_guard lock(*doc);
-                    layer->addElement(std::move(sNew));
-                }
-                newlyShapedElements.push_back(ptr);
-                groupUndo->addAction(std::make_unique<InsertUndoAction>(page, layer, ptr));
-            }
-            groupUndo->addAction(std::move(delAction));
+    // Anchor Nodes for components, BJT, terminal markers, and ground terminals
+    struct AnchorNode {
+        Point pt;
+        Point direction; // Optional preferred orientation
+    };
+    std::vector<AnchorNode> anchorNodes;
 
-            for (Stroke* sText: snipResult.protectedTextStrokes) {
-                newlyShapedElements.push_back(sText);
-            }
+    // Pass 1: Handwriting & Annotation Protection (Block & Proximity Clustering)
+    // Segregate text words ('34K', '22K', '50', 'is', 'RE 1,5', 'RC 2K')
+    // so they are NEVER modified, turned into shapes, or magnetically pulled into nodes.
+    std::set<Stroke*> protectedHandwriting = CircuitDecomposer::clusterTextBlocks(candidates);
 
-            // Register undo action without holding document lock
-            control->getUndoRedoHandler()->addUndoAction(std::move(groupUndo));
-
-            // Reselect elements on canvas
-            InsertionOrderRef refs;
-            for (const auto& elem: layer->getElements()) {
-                if (!elem) continue;
-                bool isSelected = false;
-                for (Element* rep: newlyShapedElements) {
-                    if (elem.get() == rep) {
-                        isSelected = true;
-                        break;
-                    }
-                }
-                if (isSelected) {
-                    Element::Index idx = layer->indexOf(elem.get());
-                    if (idx != Element::InvalidIndex) {
-                        refs.emplace_back(elem.get(), idx);
-                    }
-                }
-            }
-
-            if (!refs.empty()) {
-                std::sort(refs.begin(), refs.end());
-                size_t pageNo = doc->indexOf(page);
-                XojPageView* targetView = control->getWindow()->getXournal()->getViewFor(pageNo);
-                if (!targetView) {
-                    targetView = view;
-                }
-                auto newSel = SelectionFactory::createFromElementsOnActiveLayer(control, page, targetView, refs);
-                if (newSel) {
-                    control->getWindow()->getXournal()->setSelection(newSel.release());
-                }
-            }
-
-            return true;
+    // Pass 1.1: Detect Terminal Markers & Junction Dots
+    auto nodeMarkers = CircuitFeatureClassifier::detectNodeMarkers(candidates, protectedHandwriting);
+    std::set<Stroke*> nodeMarkerStrokes;
+    for (const auto& marker: nodeMarkers) {
+        if (marker.originalStroke) {
+            nodeMarkerStrokes.insert(marker.originalStroke);
         }
     }
 
-    // Process multi-stroke ground symbols first
+    for (Stroke* s: candidates) {
+        if (!s || consumedStrokes.count(s) || nodeMarkerStrokes.count(s)) continue;
+        if (CircuitFeatureClassifier::isHandwritingOrAnnotation(s)) {
+            protectedHandwriting.insert(s);
+        }
+    }
+
+    // Pass 1.2: Synthesize Clean Vector Primitives for Node Markers & Register Anchors
+    for (const auto& marker: nodeMarkers) {
+        if (!marker.originalStroke || consumedStrokes.count(marker.originalStroke)) {
+            continue;
+        }
+
+        auto delAction = std::make_unique<DeleteUndoAction>(page, false);
+        Element::Index pos = Element::InvalidIndex;
+        {
+            std::lock_guard lock(*doc);
+            auto rem = layer->removeElement(marker.originalStroke);
+            if (rem.e) {
+                pos = rem.pos;
+                delAction->addElement(layer, std::move(rem.e), pos);
+            }
+        }
+
+        auto sNew = std::make_unique<Stroke>();
+        sNew->applyStyleFrom(marker.originalStroke);
+
+        if (marker.type == CircuitNodeMarkerType::OPEN_TERMINAL) {
+            sNew->setFill(-1); // Hollow / transparent interior
+            constexpr int NUM_PTS = 24;
+            for (int i = 0; i <= NUM_PTS; ++i) {
+                double angle = (2.0 * M_PI * i) / static_cast<double>(NUM_PTS);
+                sNew->addPoint(Point(marker.center.x + marker.radius * std::cos(angle),
+                                     marker.center.y + marker.radius * std::sin(angle)));
+            }
+        } else {
+            sNew->setFill(255); // Solid filled solder dot
+            constexpr int NUM_PTS = 16;
+            for (int i = 0; i <= NUM_PTS; ++i) {
+                double angle = (2.0 * M_PI * i) / static_cast<double>(NUM_PTS);
+                sNew->addPoint(Point(marker.center.x + marker.radius * std::cos(angle),
+                                     marker.center.y + marker.radius * std::sin(angle)));
+            }
+        }
+
+        Stroke* ptr = sNew.get();
+        {
+            std::lock_guard lock(*doc);
+            layer->addElement(std::move(sNew));
+        }
+        newlyShapedElements.push_back(ptr);
+        groupUndo->addAction(std::make_unique<InsertUndoAction>(page, layer, ptr));
+        groupUndo->addAction(std::move(delAction));
+
+        consumedStrokes.insert(marker.originalStroke);
+        anchorNodes.push_back({marker.center, Point(0.0, 0.0)});
+    }
+
+    // Process multi-stroke ground symbols
     auto multiGrounds = detectMultiStrokeGrounds(candidates);
     auto groundTpl = customMgr ? customMgr->getTemplateById("ground") : nullptr;
     if (groundTpl) {
@@ -647,14 +742,45 @@ auto AutoShapeSelection::autoShapeSelectedContent(Control* control) -> bool {
         }
     }
 
-    // Pass 1: Handwriting & Annotation Protection (Block & Proximity Clustering)
-    // Segregate text words ('34K', '22K', '50', 'is', 'RE 1,5', 'RC 2K')
-    // so they are NEVER modified, turned into shapes, or magnetically pulled into nodes.
-    std::set<Stroke*> protectedHandwriting = CircuitDecomposer::clusterTextBlocks(candidates);
-    for (Stroke* s: candidates) {
-        if (!s || consumedStrokes.count(s)) continue;
-        if (CircuitFeatureClassifier::isHandwritingOrAnnotation(s)) {
-            protectedHandwriting.insert(s);
+    // Pass 1.3: Split Continuous Wire Rails at Intermediate Junction Dots
+    std::vector<Point> junctionSplitPoints;
+    for (const auto& marker: nodeMarkers) {
+        if (marker.type == CircuitNodeMarkerType::SOLDER_JUNCTION) {
+            junctionSplitPoints.push_back(marker.center);
+        }
+    }
+
+    if (!junctionSplitPoints.empty()) {
+        std::vector<Stroke*> newlySplitCandidates;
+        for (Stroke* s: candidates) {
+            if (!s || consumedStrokes.count(s) || protectedHandwriting.count(s)) continue;
+            auto splits = CircuitDecomposer::splitStrokeAtPoints(s, junctionSplitPoints);
+            if (!splits.empty()) {
+                auto delAction = std::make_unique<DeleteUndoAction>(page, false);
+                Element::Index pos = Element::InvalidIndex;
+                {
+                    std::lock_guard lock(*doc);
+                    auto rem = layer->removeElement(s);
+                    if (rem.e) {
+                        pos = rem.pos;
+                        delAction->addElement(layer, std::move(rem.e), pos);
+                    }
+                }
+                for (auto& sub: splits) {
+                    Stroke* ptr = sub.get();
+                    {
+                        std::lock_guard lock(*doc);
+                        layer->addElement(std::move(sub));
+                    }
+                    newlySplitCandidates.push_back(ptr);
+                    groupUndo->addAction(std::make_unique<InsertUndoAction>(page, layer, ptr));
+                }
+                groupUndo->addAction(std::move(delAction));
+                consumedStrokes.insert(s);
+            }
+        }
+        for (Stroke* splitS: newlySplitCandidates) {
+            candidates.push_back(splitS);
         }
     }
 
@@ -694,13 +820,6 @@ auto AutoShapeSelection::autoShapeSelectedContent(Control* control) -> bool {
         }
     }
 
-    // Anchor Nodes for components, BJT, and ground terminals
-    struct AnchorNode {
-        Point pt;
-        Point direction; // Optional preferred orientation
-    };
-    std::vector<AnchorNode> anchorNodes;
-
     // Record anchors from BJT transistors
     for (const auto& match: bjtMatches) {
         anchorNodes.push_back({match.basePin, Point()});
@@ -721,72 +840,34 @@ auto AutoShapeSelection::autoShapeSelectedContent(Control* control) -> bool {
             continue;
         }
 
-        // Check if this is a compound stroke (lead + resistor body + lead)
-        auto decomposedParts = CircuitDecomposer::decomposeCompoundStroke(stroke);
-        if (!decomposedParts.empty() && customMgr) {
-            auto rTpl = customMgr->getTemplateById("resistor_ieee");
-            if (rTpl) {
-                auto delAction = std::make_unique<DeleteUndoAction>(page, false);
-                Element::Index pos = Element::InvalidIndex;
-                {
-                    std::lock_guard lock(*doc);
-                    auto rem = layer->removeElement(stroke);
-                    if (rem.e) {
-                        pos = rem.pos;
-                        delAction->addElement(layer, std::move(rem.e), pos);
-                    }
-                }
-
-                for (auto& part: decomposedParts) {
-                    if (part.isResistorBody) {
-                        auto compStrokes = customMgr->recognizeComposite(part.stroke.get(), nullptr, 0.50);
-                        if (!compStrokes.empty()) {
-                            for (auto& sNew: compStrokes) {
-                                Stroke* ptr = sNew.get();
-                                {
-                                    std::lock_guard lock(*doc);
-                                    layer->addElement(std::move(sNew));
-                                }
-                                newlyShapedElements.push_back(ptr);
-                                groupUndo->addAction(std::make_unique<InsertUndoAction>(page, layer, ptr));
-                            }
-                            continue;
-                        }
-                    } else if (part.isWireLead) {
-                        auto wire = snapStraightWire(part.stroke.get());
-                        if (wire) {
-                            Stroke* ptr = wire.get();
-                            {
-                                std::lock_guard lock(*doc);
-                                layer->addElement(std::move(wire));
-                            }
-                            newlyShapedElements.push_back(ptr);
-                            groupUndo->addAction(std::make_unique<InsertUndoAction>(page, layer, ptr));
-                            continue;
-                        }
-                    }
-
-                    // Fallback: keep decomposed stroke as is
-                    Stroke* ptr = part.stroke.get();
-                    {
-                        std::lock_guard lock(*doc);
-                        layer->addElement(std::move(part.stroke));
-                    }
-                    newlyShapedElements.push_back(ptr);
-                    groupUndo->addAction(std::make_unique<InsertUndoAction>(page, layer, ptr));
-                }
-
-                groupUndo->addAction(std::move(delAction));
-                consumedStrokes.insert(stroke);
-                continue;
-            }
-        }
-
         std::unique_ptr<Stroke> replacement = nullptr;
 
         // Try 1: Custom SVG circuit symbols (resistor, inductor, capacitor, diode, etc.)
+        // Matches whole component gestures directly (matching Draw & Hold behavior)
         if (customMgr) {
-            auto compStrokes = customMgr->recognizeComposite(stroke, nullptr, 0.60);
+            std::vector<std::unique_ptr<Stroke>> compStrokes;
+            auto resCheck = CircuitRecognizer::recognize(stroke, customMgr->getTemplates(), 0.60);
+            if (resCheck.matched && resCheck.matchedTemplate) {
+                Point termStart = resCheck.terminalStart;
+                Point termEnd = resCheck.terminalEnd;
+
+                // Clamp terminals to nearby node markers (junction dots / terminals)
+                for (const auto& marker: nodeMarkers) {
+                    if (termStart.lineLengthTo(marker.center) <= 24.0) {
+                        termStart = marker.center;
+                    }
+                    if (termEnd.lineLengthTo(marker.center) <= 24.0) {
+                        termEnd = marker.center;
+                    }
+                }
+
+                compStrokes = customMgr->snapShapeComposite(
+                    resCheck.matchedTemplate, termStart, termEnd, stroke, true, nullptr,
+                    resCheck.bodyStartRatio, resCheck.bodyEndRatio);
+            } else {
+                compStrokes = customMgr->recognizeComposite(stroke, nullptr, 0.60);
+            }
+
             if (compStrokes.size() > 1) {
                 // Multi-stroke composite (e.g. Capacitor with air gap)
                 auto delAction = std::make_unique<DeleteUndoAction>(page, false);
@@ -819,6 +900,69 @@ auto AutoShapeSelection::autoShapeSelectedContent(Control* control) -> bool {
                 continue;
             } else if (compStrokes.size() == 1) {
                 replacement = std::move(compStrokes[0]);
+            }
+        }
+
+        // Try 1.5: Fallback for compound stroke (lead + resistor body + lead) if whole stroke didn't match
+        if (!replacement && customMgr) {
+            auto decomposedParts = CircuitDecomposer::decomposeCompoundStroke(stroke);
+            if (!decomposedParts.empty()) {
+                auto rTpl = customMgr->getTemplateById("resistor_ieee");
+                if (rTpl) {
+                    auto delAction = std::make_unique<DeleteUndoAction>(page, false);
+                    Element::Index pos = Element::InvalidIndex;
+                    {
+                        std::lock_guard lock(*doc);
+                        auto rem = layer->removeElement(stroke);
+                        if (rem.e) {
+                            pos = rem.pos;
+                            delAction->addElement(layer, std::move(rem.e), pos);
+                        }
+                    }
+
+                    for (auto& part: decomposedParts) {
+                        if (part.isResistorBody) {
+                            auto compStrokes = customMgr->recognizeComposite(part.stroke.get(), nullptr, 0.50);
+                            if (!compStrokes.empty()) {
+                                for (auto& sNew: compStrokes) {
+                                    Stroke* ptr = sNew.get();
+                                    {
+                                        std::lock_guard lock(*doc);
+                                        layer->addElement(std::move(sNew));
+                                    }
+                                    newlyShapedElements.push_back(ptr);
+                                    groupUndo->addAction(std::make_unique<InsertUndoAction>(page, layer, ptr));
+                                }
+                                continue;
+                            }
+                        } else if (part.isWireLead) {
+                            auto wire = snapStraightWire(part.stroke.get());
+                            if (wire) {
+                                Stroke* ptr = wire.get();
+                                {
+                                    std::lock_guard lock(*doc);
+                                    layer->addElement(std::move(wire));
+                                }
+                                newlyShapedElements.push_back(ptr);
+                                groupUndo->addAction(std::make_unique<InsertUndoAction>(page, layer, ptr));
+                                continue;
+                            }
+                        }
+
+                        // Fallback: keep decomposed stroke as is
+                        Stroke* ptr = part.stroke.get();
+                        {
+                            std::lock_guard lock(*doc);
+                            layer->addElement(std::move(part.stroke));
+                        }
+                        newlyShapedElements.push_back(ptr);
+                        groupUndo->addAction(std::make_unique<InsertUndoAction>(page, layer, ptr));
+                    }
+
+                    groupUndo->addAction(std::move(delAction));
+                    consumedStrokes.insert(stroke);
+                    continue;
+                }
             }
         }
 
@@ -945,7 +1089,64 @@ auto AutoShapeSelection::autoShapeSelectedContent(Control* control) -> bool {
 
     // 2. Manhattan T-Junction Snapping:
     // Ensure vertical wires meeting horizontal rails (and vice versa) snap into exact 90-degree right angles
-    applyTJunctionSnapping(newlyShapedElements);
+    std::set<Stroke*> componentStrokesSet;
+    for (Element* elem: newlyShapedElements) {
+        auto* s = static_cast<Stroke*>(elem);
+        if (s->getPointCount() > 2) {
+            componentStrokesSet.insert(s);
+        }
+    }
+    applyTJunctionSnapping(newlyShapedElements, componentStrokesSet);
+
+    // 2.5 Dock Wire Leads to Component Anchor Nodes
+    std::vector<TerminalAnchor> terminalAnchors;
+    for (const auto& a: anchorNodes) {
+        terminalAnchors.push_back({a.pt, a.direction, false});
+    }
+    dockWiresToAnchors(newlyShapedElements, componentStrokesSet, terminalAnchors);
+
+    // 2.6 Exact Docking to Node Markers (Junction Dots & Port Rings)
+    // Clamp wire and component lead endpoints within 24px of any node marker directly to marker center
+    for (Element* elem: newlyShapedElements) {
+        auto* s = static_cast<Stroke*>(elem);
+        if (!s || s->getPointCount() < 2) continue;
+        const auto& pts = s->getPointVector();
+        Point pStart = pts.front();
+        Point pEnd = pts.back();
+        bool changed = false;
+
+        for (const auto& marker: nodeMarkers) {
+            if (pStart.lineLengthTo(marker.center) <= 24.0) {
+                pStart = marker.center;
+                changed = true;
+            }
+            if (pEnd.lineLengthTo(marker.center) <= 24.0) {
+                pEnd = marker.center;
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            if (s->getPointCount() == 2) {
+                // Re-orthogonalize if close to Manhattan 0 or 90 deg
+                double dx = pEnd.x - pStart.x;
+                double dy = pEnd.y - pStart.y;
+                double angleDeg = std::abs(std::atan2(dy, dx) * 180.0 / M_PI);
+                if (angleDeg <= 20.0 || angleDeg >= 160.0) {
+                    pEnd.y = pStart.y;
+                } else if (std::abs(angleDeg - 90.0) <= 20.0) {
+                    pEnd.x = pStart.x;
+                }
+                std::vector<Point> newPts = {pStart, pEnd};
+                s->setPointVector(std::move(newPts));
+            } else {
+                auto newPts = pts;
+                newPts.front() = pStart;
+                newPts.back() = pEnd;
+                s->setPointVector(std::move(newPts));
+            }
+        }
+    }
 
     // 3. Terminal & Node Snapping:
     // Connect wire endpoints and component terminals that lie within 16 px of each other

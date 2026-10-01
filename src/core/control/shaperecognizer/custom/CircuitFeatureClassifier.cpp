@@ -275,6 +275,12 @@ auto CircuitFeatureClassifier::detectSingleStrokeGround(const Stroke* stroke, Po
         return false;
     }
 
+    auto feat = extractFeatures(stroke);
+    // Ground symbols do NOT have alternating oscillating zig-zags
+    if (feat.alternatingExtremaCount >= 2 || feat.extrema.size() >= 3 || feat.bodySinuosity > 1.15) {
+        return false;
+    }
+
     auto bbox = stroke->getBoundingBox();
     if (bbox.height < 14.0 || bbox.width < 10.0) {
         return false;
@@ -291,6 +297,15 @@ auto CircuitFeatureClassifier::detectSingleStrokeGround(const Stroke* stroke, Po
     double centerX = bbox.x + bbox.width * 0.5;
     if (std::abs(p0.x - centerX) > bbox.width * 0.35) {
         return false;
+    }
+
+    // Top stem must be vertical and roughly centered (no wide horizontal swings in top half)
+    for (const auto& p: pts) {
+        if (p.y < bbox.y + bbox.height * 0.50) {
+            if (std::abs(p.x - centerX) > bbox.width * 0.28) {
+                return false;
+            }
+        }
     }
 
     // Bottom horizontal sweep: points near the bottom edge (bottom 35%) must span horizontally
@@ -326,25 +341,19 @@ auto CircuitFeatureClassifier::classify(const Stroke* stroke) -> CircuitFeatureC
         return CircuitFeatureClass::Arrow;
     }
 
-    // 1. Check Single-Stroke Ground
-    Point topPt, botPt;
-    if (detectSingleStrokeGround(stroke, topPt, botPt)) {
-        return CircuitFeatureClass::Ground;
-    }
-
     auto feat = extractFeatures(stroke);
     auto bbox = stroke->getBoundingBox();
     double maxDim = std::max(bbox.width, bbox.height);
     double minDim = std::min(bbox.width, bbox.height);
     double aspect = (minDim > 0.0) ? (maxDim / minDim) : 100.0;
 
-    // 2. Inductor vs Resistor discrimination with Vertex Sharpness
+    // 1. Inductor vs Resistor discrimination with Vertex Sharpness
     // Inductors MUST have smooth, rounded U-turns (large interior vertex angles >= 110 deg).
     // Hand-drawn zig-zag resistors have sharp, acute V-reversals (<= 88 deg).
     double avgVertexAngle = CircuitDecomposer::computeAverageVertexAngle(stroke);
     bool isSharpTurns = (avgVertexAngle <= 92.0);
 
-    // 2. Inductor (Unipolar Coils):
+    // Inductor (Unipolar Coils):
     // Coils are all on one side of baseline (unipolar) with at least 2-3 coils
     if (feat.isUnipolar && feat.chordLength >= 30.0 &&
         (feat.positivePeakCount >= 3 || feat.negativeValleyCount >= 3 ||
@@ -352,7 +361,7 @@ auto CircuitFeatureClassifier::classify(const Stroke* stroke) -> CircuitFeatureC
         return CircuitFeatureClass::Inductor;
     }
 
-    // 3. Resistor (IEEE Zig-Zag):
+    // Resistor (IEEE Zig-Zag):
     // Works for both alternating bipolar and one-sided/tilted zig-zag strokes!
     bool hasExtrema = (feat.extrema.size() >= 3 || feat.alternatingExtremaCount >= 3);
     bool hasHighSinuosity = (feat.sinuosity >= 1.18 || (feat.hasOscillatingBody && feat.bodySinuosity >= 1.14));
@@ -367,7 +376,13 @@ auto CircuitFeatureClassifier::classify(const Stroke* stroke) -> CircuitFeatureC
         return CircuitFeatureClass::ResistorIeee;
     }
 
-    // 4. Straight Wire:
+    // 2. Check Single-Stroke Ground (only if not an oscillating resistor/inductor)
+    Point topPt, botPt;
+    if (detectSingleStrokeGround(stroke, topPt, botPt)) {
+        return CircuitFeatureClass::Ground;
+    }
+
+    // 3. Straight Wire:
     double maxPerp = std::max(feat.maxPerpPositive, feat.maxPerpNegative);
     if (maxPerp <= std::min(4.0, feat.chordLength * 0.04) && feat.alternatingExtremaCount <= 1 && feat.sinuosity <= 1.05) {
         return CircuitFeatureClass::StraightWire;
@@ -396,7 +411,7 @@ auto CircuitFeatureClassifier::isHandwritingOrAnnotation(const Stroke* stroke) -
     double minDim = std::min(w, h);
     double diag = std::hypot(w, h);
 
-    // 1. Tiny strokes (dots, accents, small commas, letter fragments)
+    // 1. Tiny strokes (dots, accents, small commas, letter fragments, decimal points)
     if (diag < 18.0) {
         return true;
     }
@@ -417,19 +432,24 @@ auto CircuitFeatureClassifier::isHandwritingOrAnnotation(const Stroke* stroke) -
         }
     }
 
-    // 3. Compact character-sized strokes:
-    // Characters ('R', 's', '5', '0', '3', '4', 'K', '1', '2', etc.)
-    // have non-zero extent in both X and Y and compact dimensions (aspect ratio < 2.0).
-    if (minDim >= 6.0 && maxDim <= 45.0 && aspect < 2.0) {
+    // 3. Tiny punctuation marks, dashes, minus signs, and isolated dots (length <= 12px)
+    if (maxDim <= 12.0 && diag <= 14.0) {
+        return true;
+    }
+
+    // 4. Compact character-sized strokes:
+    // Characters ('R', 's', '5', '0', '3', '4', 'K', '1', '2', 'u', 'F', 'V', 'p', 'n', etc.)
+    // have non-zero extent in both X and Y and compact dimensions (aspect ratio < 2.5).
+    if (minDim >= 4.0 && maxDim <= 48.0 && aspect < 2.5) {
         auto feat = extractFeatures(stroke);
-        if (feat.sinuosity > 1.15 || feat.alternatingExtremaCount >= 2) {
+        if (feat.sinuosity > 1.12 || feat.alternatingExtremaCount >= 1 || feat.extrema.size() >= 1) {
             return true;
         }
     }
 
-    // 4. Characters or cursive with high sinuosity:
+    // 5. Characters or cursive with high sinuosity:
     auto feat = extractFeatures(stroke);
-    if (feat.sinuosity > 1.25 && maxDim < 50.0 && aspect < 2.0) {
+    if (feat.sinuosity > 1.25 && maxDim < 50.0 && aspect < 2.5) {
         return true;
     }
 
@@ -448,7 +468,6 @@ auto CircuitFeatureClassifier::detectBjtTransistors(const std::vector<Stroke*>& 
     // A base bar is a straight segment (length 14-48px) with high aspect ratio and minimal curvature
     for (Stroke* sBase: candidates) {
         if (!sBase || sBase->getPointCount() < 2 || consumed.count(sBase)) continue;
-        if (isHandwritingOrAnnotation(sBase)) continue;
 
         auto box = sBase->getBoundingBox();
         double w = box.width;
@@ -471,7 +490,6 @@ auto CircuitFeatureClassifier::detectBjtTransistors(const std::vector<Stroke*>& 
         std::vector<Stroke*> touchingLeads;
         for (Stroke* sLead: candidates) {
             if (sLead == sBase || !sLead || sLead->getPointCount() < 2 || consumed.count(sLead)) continue;
-            if (isHandwritingOrAnnotation(sLead)) continue;
 
             const auto& lPts = sLead->getPointVector();
             const Point& lp0 = lPts.front();
@@ -566,6 +584,274 @@ auto CircuitFeatureClassifier::detectBjtTransistors(const std::vector<Stroke*>& 
     }
 
     return matches;
+}
+
+auto CircuitFeatureClassifier::detectParallelCapacitors(const std::vector<Stroke*>& candidates)
+        -> std::vector<ParallelCapacitorMatch> {
+    std::vector<ParallelCapacitorMatch> matches;
+    if (candidates.size() < 2) {
+        return matches;
+    }
+
+    std::set<Stroke*> consumed;
+
+    for (size_t i = 0; i < candidates.size(); ++i) {
+        Stroke* s1 = candidates[i];
+        if (!s1 || s1->getPointCount() < 2 || consumed.count(s1)) continue;
+
+        const auto& pts1 = s1->getPointVector();
+        double len1 = pts1.front().lineLengthTo(pts1.back());
+        if (len1 < 12.0 || len1 > 60.0) continue;
+
+        auto feat1 = extractFeatures(s1);
+        if (feat1.sinuosity > 1.15 || feat1.alternatingExtremaCount > 1) continue;
+
+        Point dir1((pts1.back().x - pts1.front().x) / len1, (pts1.back().y - pts1.front().y) / len1);
+        Point mid1((pts1.front().x + pts1.back().x) * 0.5, (pts1.front().y + pts1.back().y) * 0.5);
+
+        for (size_t j = i + 1; j < candidates.size(); ++j) {
+            Stroke* s2 = candidates[j];
+            if (!s2 || s2->getPointCount() < 2 || consumed.count(s2)) continue;
+
+            const auto& pts2 = s2->getPointVector();
+            double len2 = pts2.front().lineLengthTo(pts2.back());
+            if (len2 < 12.0 || len2 > 60.0) continue;
+
+            auto feat2 = extractFeatures(s2);
+            if (feat2.sinuosity > 1.15 || feat2.alternatingExtremaCount > 1) continue;
+
+            Point dir2((pts2.back().x - pts2.front().x) / len2, (pts2.back().y - pts2.front().y) / len2);
+            Point mid2((pts2.front().x + pts2.back().x) * 0.5, (pts2.front().y + pts2.back().y) * 0.5);
+
+            // Parallel alignment: absolute dot product between direction vectors must be close to 1
+            double dot = std::abs(dir1.x * dir2.x + dir1.y * dir2.y);
+            if (dot < 0.90) continue;
+
+            // Distance between plate centers
+            double centerDist = mid1.lineLengthTo(mid2);
+            if (centerDist < 5.0 || centerDist > 30.0) continue;
+
+            // Displacement vector between mid1 and mid2
+            Point disp(mid2.x - mid1.x, mid2.y - mid1.y);
+            double parallelOffset = std::abs(disp.x * dir1.x + disp.y * dir1.y);
+            double perpDist = std::hypot(disp.x - parallelOffset * dir1.x, disp.y - parallelOffset * dir1.y);
+
+            // Perpendicular gap must dominate; parallel offset between plates must be small
+            if (perpDist < 5.0 || perpDist > 25.0 || parallelOffset > std::max(len1, len2) * 0.55) {
+                continue;
+            }
+
+            // Both plates are roughly vertical (dir.y dominates) -> connection is horizontal
+            // Or plates are roughly horizontal (dir.x dominates) -> connection is vertical
+            bool isPlatesVertical = (std::abs(dir1.y) >= std::abs(dir1.x));
+
+            ParallelCapacitorMatch match;
+            match.plate1 = s1;
+            match.plate2 = s2;
+            match.plate1Center = mid1;
+            match.plate2Center = mid2;
+            match.plateLength = std::max(len1, len2);
+            match.plateGap = perpDist;
+            match.center = Point((mid1.x + mid2.x) * 0.5, (mid1.y + mid2.y) * 0.5);
+            match.isHorizontal = isPlatesVertical;
+
+            constexpr double leadLen = 14.0;
+            if (match.isHorizontal) {
+                // Plates are vertical, leads extend horizontally outward to the left and right
+                Point leftCenter = (mid1.x < mid2.x) ? mid1 : mid2;
+                Point rightCenter = (mid1.x < mid2.x) ? mid2 : mid1;
+
+                match.terminalA = Point(leftCenter.x - leadLen, match.center.y);
+                match.terminalB = Point(rightCenter.x + leadLen, match.center.y);
+            } else {
+                // Plates are horizontal, leads extend vertically outward top and bottom
+                Point topCenter = (mid1.y < mid2.y) ? mid1 : mid2;
+                Point bottomCenter = (mid1.y < mid2.y) ? mid2 : mid1;
+
+                match.terminalA = Point(match.center.x, topCenter.y - leadLen);
+                match.terminalB = Point(match.center.x, bottomCenter.y + leadLen);
+            }
+
+            consumed.insert(s1);
+            consumed.insert(s2);
+            matches.push_back(match);
+            break;
+        }
+    }
+
+    return matches;
+}
+
+auto CircuitFeatureClassifier::detectNodeMarkers(
+        const std::vector<Stroke*>& candidates,
+        const std::set<Stroke*>& textClusterStrokes) -> std::vector<CircuitNodeMarker> {
+    std::vector<CircuitNodeMarker> markers;
+    if (candidates.empty()) {
+        return markers;
+    }
+
+    // 1. Gather all non-text strokes to verify circuit proximity
+    std::vector<Stroke*> circuitStrokes;
+    for (Stroke* s: candidates) {
+        if (!s || textClusterStrokes.count(s)) continue;
+        circuitStrokes.push_back(s);
+    }
+
+    // 2. Identify candidate marker strokes
+    for (Stroke* s: circuitStrokes) {
+        if (!s || s->getPointCount() < 1) continue;
+
+        auto bbox = s->getBoundingBox();
+        double maxDim = std::max(bbox.width, bbox.height);
+        double minDim = std::min(bbox.width, bbox.height);
+        double diag = std::hypot(bbox.width, bbox.height);
+
+        // Marker strokes are compact (small dots or small circular terminal loops)
+        // Terminal loops are typically 7px - 36px in diameter
+        // Solder dots are typically 2px - 25px in diameter
+        if (diag > 42.0 || maxDim > 38.0) {
+            continue;
+        }
+
+        const auto& pts = s->getPointVector();
+
+        // Compute centroid
+        Point center(0.0, 0.0);
+        for (const auto& p: pts) {
+            center.x += p.x;
+            center.y += p.y;
+        }
+        center.x /= static_cast<double>(pts.size());
+        center.y /= static_cast<double>(pts.size());
+
+        // 3. Proximity check: Must be near other circuit elements (wire endpoints or lines)
+        bool nearCircuit = false;
+        constexpr double MAX_CIRCUIT_PROXIMITY_SQ = 28.0 * 28.0;
+
+        for (Stroke* other: circuitStrokes) {
+            if (other == s || other->getPointCount() < 2) continue;
+            auto otherBox = other->getBoundingBox();
+            double otherMaxDim = std::max(otherBox.width, otherBox.height);
+            // Skip other tiny dots
+            if (otherMaxDim <= 25.0 && std::hypot(otherBox.width, otherBox.height) <= 28.0) {
+                continue;
+            }
+
+            const auto& oPts = other->getPointVector();
+            // Check distance to endpoints
+            double dStartSq = (center.x - oPts.front().x) * (center.x - oPts.front().x) +
+                              (center.y - oPts.front().y) * (center.y - oPts.front().y);
+            double dEndSq = (center.x - oPts.back().x) * (center.x - oPts.back().x) +
+                            (center.y - oPts.back().y) * (center.y - oPts.back().y);
+
+            if (dStartSq <= MAX_CIRCUIT_PROXIMITY_SQ || dEndSq <= MAX_CIRCUIT_PROXIMITY_SQ) {
+                nearCircuit = true;
+                break;
+            }
+
+            // Check distance to line segments of other
+            for (size_t i = 0; i + 1 < oPts.size(); ++i) {
+                Point p1 = oPts[i];
+                Point p2 = oPts[i + 1];
+                double segDx = p2.x - p1.x;
+                double segDy = p2.y - p1.y;
+                double segLenSq = segDx * segDx + segDy * segDy;
+                if (segLenSq < 1e-4) continue;
+                double t = std::clamp(((center.x - p1.x) * segDx + (center.y - p1.y) * segDy) / segLenSq, 0.0, 1.0);
+                Point proj(p1.x + t * segDx, p1.y + t * segDy);
+                double dSq = (center.x - proj.x) * (center.x - proj.x) + (center.y - proj.y) * (center.y - proj.y);
+                if (dSq <= 12.0 * 12.0) {
+                    nearCircuit = true;
+                    break;
+                }
+            }
+            if (nearCircuit) break;
+        }
+
+        if (!nearCircuit && circuitStrokes.size() > 1) {
+            // Stray dot far from any circuit element
+            continue;
+        }
+
+        // 4. Classify OPEN_TERMINAL vs SOLDER_JUNCTION
+        double endGap = pts.front().lineLengthTo(pts.back());
+        bool isClosed = (pts.size() >= 4 && endGap <= maxDim * 0.55);
+        double aspect = (minDim > 0.0) ? (maxDim / minDim) : 1.0;
+
+        double meanR = 0.0;
+        for (const auto& p: pts) {
+            meanR += p.lineLengthTo(center);
+        }
+        meanR /= static_cast<double>(pts.size());
+
+        double varR = 0.0;
+        for (const auto& p: pts) {
+            double diff = p.lineLengthTo(center) - meanR;
+            varR += diff * diff;
+        }
+        varR /= static_cast<double>(pts.size());
+        double stdR = std::sqrt(varR);
+
+        CircuitNodeMarker marker;
+        marker.originalStroke = s;
+        marker.center = center;
+
+        // Open terminal: a circular loop (aspect close to 1, hollow ring with low radial variance, diameter >= 6px)
+        if (isClosed && aspect <= 1.65 && maxDim >= 6.0 && meanR >= 2.5 && (stdR / meanR < 0.45)) {
+            marker.type = CircuitNodeMarkerType::OPEN_TERMINAL;
+            marker.radius = std::clamp(meanR, 3.5, 6.5);
+        } else {
+            marker.type = CircuitNodeMarkerType::SOLDER_JUNCTION;
+            marker.radius = 3.5;
+        }
+
+        markers.push_back(marker);
+    }
+
+    // 5. Collinear Dot Alignment (align dots that share similar X or Y coordinates)
+    // Vertical alignment (align X)
+    for (size_t i = 0; i < markers.size(); ++i) {
+        std::vector<size_t> group = {i};
+        for (size_t j = i + 1; j < markers.size(); ++j) {
+            if (std::abs(markers[i].center.x - markers[j].center.x) <= 8.0) {
+                group.push_back(j);
+            }
+        }
+        if (group.size() >= 2) {
+            double sumX = 0.0;
+            for (size_t idx: group) {
+                sumX += markers[idx].center.x;
+            }
+            double avgX = sumX / static_cast<double>(group.size());
+            for (size_t idx: group) {
+                markers[idx].center.x = avgX;
+                markers[idx].isCollinearAligned = true;
+            }
+        }
+    }
+
+    // Horizontal alignment (align Y)
+    for (size_t i = 0; i < markers.size(); ++i) {
+        std::vector<size_t> group = {i};
+        for (size_t j = i + 1; j < markers.size(); ++j) {
+            if (std::abs(markers[i].center.y - markers[j].center.y) <= 8.0) {
+                group.push_back(j);
+            }
+        }
+        if (group.size() >= 2) {
+            double sumY = 0.0;
+            for (size_t idx: group) {
+                sumY += markers[idx].center.y;
+            }
+            double avgY = sumY / static_cast<double>(group.size());
+            for (size_t idx: group) {
+                markers[idx].center.y = avgY;
+                markers[idx].isCollinearAligned = true;
+            }
+        }
+    }
+
+    return markers;
 }
 
 }  // namespace xoj::circuit

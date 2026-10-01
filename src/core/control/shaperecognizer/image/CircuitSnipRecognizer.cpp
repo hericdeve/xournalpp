@@ -259,14 +259,15 @@ auto CircuitSnipRecognizer::processSnip(const std::vector<Stroke*>& selectedStro
                 cx += pt.first;
                 cy += pt.second;
             }
-            cx /= branch.pixelPath.size();
-            cy /= branch.pixelPath.size();
+            double nPts = static_cast<double>(branch.pixelPath.size());
+            cx /= nPts;
+            cy /= nPts;
             
             double r = 0;
             for (const auto& pt : branch.pixelPath) {
                 r += std::hypot(pt.first - cx, pt.second - cy);
             }
-            r /= branch.pixelPath.size();
+            r /= nPts;
             
             if (r > 10.0) {
                 Point center = toWorldPt(Point(cx, cy));

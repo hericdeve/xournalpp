@@ -13,6 +13,7 @@
 
 #include <vector>
 #include <memory>
+#include <set>
 #include "model/Point.h"
 #include "model/Stroke.h"
 
@@ -97,6 +98,47 @@ public:
      * across a set of candidate strokes.
      */
     static auto detectBjtTransistors(const std::vector<Stroke*>& candidates) -> std::vector<struct BjtTransistorMatch>;
+
+    /**
+     * Detects parallel-plate capacitors (two roughly parallel straight strokes with an air gap)
+     * across candidate strokes.
+     */
+    static auto detectParallelCapacitors(const std::vector<Stroke*>& candidates)
+            -> std::vector<struct ParallelCapacitorMatch>;
+
+    /**
+     * Detects circuit node markers (open terminal circles and solid solder junction dots)
+     * from candidate strokes, excluding punctuation inside protected text clusters.
+     */
+    static auto detectNodeMarkers(const std::vector<Stroke*>& candidates,
+                                  const std::set<Stroke*>& textClusterStrokes)
+            -> std::vector<struct CircuitNodeMarker>;
+};
+
+enum class CircuitNodeMarkerType {
+    OPEN_TERMINAL,    // Hollow circular ring (for external ports / terminals)
+    SOLDER_JUNCTION   // Solid filled dot (for multi-wire junctions or component connections)
+};
+
+struct CircuitNodeMarker {
+    Stroke* originalStroke = nullptr;
+    Point center;
+    double radius = 3.5;
+    CircuitNodeMarkerType type = CircuitNodeMarkerType::SOLDER_JUNCTION;
+    bool isCollinearAligned = false;
+};
+
+struct ParallelCapacitorMatch {
+    Stroke* plate1 = nullptr;
+    Stroke* plate2 = nullptr;
+    Point terminalA;
+    Point terminalB;
+    Point plate1Center;
+    Point plate2Center;
+    Point center;
+    double plateLength = 0.0;
+    double plateGap = 0.0;
+    bool isHorizontal = true; // Connection axis is horizontal (plates vertical)
 };
 
 struct BjtTransistorMatch {

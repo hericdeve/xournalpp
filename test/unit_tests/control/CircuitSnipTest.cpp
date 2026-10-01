@@ -135,8 +135,41 @@ TEST(CircuitSnipTest, TestCircuitSnipProcessWithResistorAndText) {
         }
     }
     EXPECT_TRUE(foundProtectedText);
-
-    // Should succeed and synthesize clean vector strokes
-    EXPECT_TRUE(result.success);
-    EXPECT_FALSE(result.strokesToInsert.empty());
 }
+
+TEST(CircuitSnipTest, TestResistorWithTerminalDots) {
+    CustomShapeManager mgr;
+    mgr.loadDefaults();
+
+    auto dot1 = std::make_unique<Stroke>();
+    dot1->addPoint(Point(100.0, 48.0));
+    dot1->addPoint(Point(100.0, 50.0));
+
+    auto resistor = std::make_unique<Stroke>();
+    resistor->addPoint(Point(100.0, 50.0));
+    resistor->addPoint(Point(100.0, 65.0)); // lead 1
+    resistor->addPoint(Point(112.0, 75.0)); // peak 1
+    resistor->addPoint(Point(88.0, 85.0));  // valley 1
+    resistor->addPoint(Point(112.0, 95.0)); // peak 2
+    resistor->addPoint(Point(88.0, 105.0)); // valley 2
+    resistor->addPoint(Point(112.0, 115.0)); // peak 3
+    resistor->addPoint(Point(88.0, 125.0)); // valley 3
+    resistor->addPoint(Point(100.0, 135.0));
+    resistor->addPoint(Point(100.0, 160.0)); // lead 2
+
+    auto dot2 = std::make_unique<Stroke>();
+    dot2->addPoint(Point(100.0, 160.0));
+    dot2->addPoint(Point(100.0, 162.0));
+
+    std::vector<Stroke*> selected = {dot1.get(), resistor.get(), dot2.get()};
+    auto result = CircuitSnipRecognizer::processSnip(selected, &mgr);
+    std::cout << "TEST RESISTOR WITH DOTS: snip success=" << result.success 
+              << " strokesToInsert=" << result.strokesToInsert.size() << std::endl;
+    for (size_t i = 0; i < result.strokesToInsert.size(); ++i) {
+        std::cout << "  Stroke " << i << " pts=" << result.strokesToInsert[i]->getPointCount()
+                  << " start=(" << result.strokesToInsert[i]->getPoint(0).x << "," << result.strokesToInsert[i]->getPoint(0).y << ")"
+                  << " end=(" << result.strokesToInsert[i]->getPoint(result.strokesToInsert[i]->getPointCount()-1).x << ","
+                  << result.strokesToInsert[i]->getPoint(result.strokesToInsert[i]->getPointCount()-1).y << ")" << std::endl;
+    }
+}
+

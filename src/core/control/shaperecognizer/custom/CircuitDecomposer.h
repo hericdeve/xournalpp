@@ -47,6 +47,17 @@ public:
      * Rounded U-coils (inductors) have obtuse angles (>= 115 deg).
      */
     static auto computeAverageVertexAngle(const Stroke* stroke) -> double;
+
+    /**
+     * Splits a straight wire stroke at a series of points (e.g. intermediate junction dots along a rail).
+     * If the stroke passes near any split point (within maxDist) and the split point is
+     * sufficiently far from the stroke's endpoints, splits the stroke into discrete sub-strokes.
+     */
+    static auto splitStrokeAtPoints(const Stroke* stroke,
+                                    const std::vector<Point>& splitPoints,
+                                    double maxDist = 8.0,
+                                    double minEndpointDist = 12.0)
+            -> std::vector<std::unique_ptr<Stroke>>;
 };
 
 }  // namespace xoj::circuit

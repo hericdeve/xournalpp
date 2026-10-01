@@ -11,6 +11,7 @@
 
 #include <gtest/gtest.h>
 
+#include "control/shaperecognizer/custom/CircuitDecomposer.h"
 #include "control/shaperecognizer/custom/CircuitFeatureClassifier.h"
 #include "control/shaperecognizer/custom/CircuitRecognizer.h"
 #include "control/shaperecognizer/custom/CircuitSnapper.h"
@@ -209,4 +210,148 @@ TEST(CircuitClassifierTest, TestSingleStrokeGroundDetection) {
 
     auto featClass = CircuitFeatureClassifier::classify(stroke.get());
     EXPECT_EQ(featClass, CircuitFeatureClass::Ground);
+}
+
+TEST(CircuitClassifierTest, TestParallelCapacitorDetection) {
+    // 2 parallel vertical strokes close to each other
+    auto plate1 = std::make_unique<Stroke>();
+    plate1->addPoint(Point(100.0, 50.0));
+    plate1->addPoint(Point(100.0, 80.0));
+
+    auto plate2 = std::make_unique<Stroke>();
+    plate2->addPoint(Point(110.0, 50.0));
+    plate2->addPoint(Point(110.0, 80.0));
+
+    std::vector<Stroke*> candidates = {plate1.get(), plate2.get()};
+    auto matches = CircuitFeatureClassifier::detectParallelCapacitors(candidates);
+
+    ASSERT_EQ(matches.size(), 1);
+    EXPECT_NEAR(matches[0].terminalA.x, 86.0, 2.0);
+    EXPECT_NEAR(matches[0].terminalB.x, 124.0, 2.0);
+    EXPECT_NEAR(matches[0].terminalA.y, 65.0, 2.0);
+    EXPECT_NEAR(matches[0].terminalB.y, 65.0, 2.0);
+}
+
+TEST(CircuitClassifierTest, TestTextBlockClustering) {
+    // 3 strokes forming "22k" close to each other
+    auto s1 = std::make_unique<Stroke>();
+    s1->addPoint(Point(10.0, 10.0));
+    s1->addPoint(Point(18.0, 10.0));
+    s1->addPoint(Point(10.0, 20.0));
+    s1->addPoint(Point(18.0, 20.0));
+
+    auto s2 = std::make_unique<Stroke>();
+    s2->addPoint(Point(22.0, 10.0));
+    s2->addPoint(Point(30.0, 10.0));
+    s2->addPoint(Point(22.0, 20.0));
+    s2->addPoint(Point(30.0, 20.0));
+
+    auto s3 = std::make_unique<Stroke>();
+    s3->addPoint(Point(34.0, 8.0));
+    s3->addPoint(Point(34.0, 20.0));
+    s3->addPoint(Point(40.0, 14.0));
+
+    // And a long wire far away
+    auto wire = std::make_unique<Stroke>();
+    wire->addPoint(Point(10.0, 100.0));
+    wire->addPoint(Point(150.0, 100.0));
+
+    std::vector<Stroke*> candidates = {s1.get(), s2.get(), s3.get(), wire.get()};
+    auto protectedText = CircuitDecomposer::clusterTextBlocks(candidates);
+
+    EXPECT_TRUE(protectedText.count(s1.get()) > 0);
+    EXPECT_TRUE(protectedText.count(s2.get()) > 0);
+    EXPECT_TRUE(protectedText.count(s3.get()) > 0);
+    EXPECT_FALSE(protectedText.count(wire.get()) > 0);
+}
+
+TEST(CircuitClassifierTest, TestNodeMarkerDetectionAndDiscrimination) {
+    // 1. Text cluster with digits and a comma: "1,5"
+    // '1' stroke
+    auto sDigit1 = std::make_unique<Stroke>();
+    sDigit1->addPoint(Point(10.0, 10.0));
+    sDigit1->addPoint(Point(10.0, 25.0));
+
+    // comma ',' stroke near '1'
+    auto sComma = std::make_unique<Stroke>();
+    sComma->addPoint(Point(14.0, 24.0));
+    sComma->addPoint(Point(13.0, 27.0));
+
+    // '5' stroke near ','
+    auto sDigit5 = std::make_unique<Stroke>();
+    sDigit5->addPoint(Point(18.0, 10.0));
+    sDigit5->addPoint(Point(18.0, 25.0));
+
+    // 2. Wire with a terminal port circle at the top
+    auto sWire = std::make_unique<Stroke>();
+    sWire->addPoint(Point(100.0, 30.0));
+    sWire->addPoint(Point(100.0, 120.0));
+
+    // Small circular ring at (100, 26) representing open terminal
+    auto sPort = std::make_unique<Stroke>();
+    for (int i = 0; i <= 16; ++i) {
+        double a = (2.0 * M_PI * i) / 16.0;
+        sPort->addPoint(Point(100.0 + 4.5 * std::cos(a), 26.0 + 4.5 * std::sin(a)));
+    }
+
+    // 3. Solder dot at intermediate wire junction (100, 75)
+    auto sSolderDot = std::make_unique<Stroke>();
+    sSolderDot->addPoint(Point(100.0, 75.0));
+    sSolderDot->addPoint(Point(101.0, 75.5));
+    sSolderDot->addPoint(Point(100.5, 76.0));
+
+    std::vector<Stroke*> allStrokes = {
+        sDigit1.get(), sComma.get(), sDigit5.get(),
+        sWire.get(), sPort.get(), sSolderDot.get()
+    };
+
+    // Step A: Text clustering should group '1', ',', '5'
+    auto protectedText = CircuitDecomposer::clusterTextBlocks(allStrokes);
+    EXPECT_TRUE(protectedText.count(sDigit1.get()) > 0);
+    EXPECT_TRUE(protectedText.count(sComma.get()) > 0);
+    EXPECT_TRUE(protectedText.count(sDigit5.get()) > 0);
+    EXPECT_FALSE(protectedText.count(sPort.get()) > 0);
+    EXPECT_FALSE(protectedText.count(sSolderDot.get()) > 0);
+
+    // Step B: Node marker detection should identify sPort and sSolderDot, but ignore sComma
+    auto markers = CircuitFeatureClassifier::detectNodeMarkers(allStrokes, protectedText);
+    EXPECT_EQ(markers.size(), 2u);
+
+    bool foundPort = false;
+    bool foundSolder = false;
+    for (const auto& m: markers) {
+        if (m.type == CircuitNodeMarkerType::OPEN_TERMINAL) {
+            foundPort = true;
+            EXPECT_NEAR(m.center.x, 100.0, 1.0);
+            EXPECT_NEAR(m.center.y, 26.0, 1.0);
+        } else if (m.type == CircuitNodeMarkerType::SOLDER_JUNCTION) {
+            foundSolder = true;
+            EXPECT_NEAR(m.center.x, 100.0, 1.0);
+            EXPECT_NEAR(m.center.y, 75.0, 1.5);
+        }
+    }
+    EXPECT_TRUE(foundPort);
+    EXPECT_TRUE(foundSolder);
+}
+
+TEST(CircuitClassifierTest, TestStrokeSplittingAtJunctionPoints) {
+    // A long vertical wire from (100, 20) to (100, 180)
+    auto longWire = std::make_unique<Stroke>();
+    longWire->addPoint(Point(100.0, 20.0));
+    longWire->addPoint(Point(100.0, 100.0));
+    longWire->addPoint(Point(100.0, 180.0));
+
+    // A junction dot at (100, 100)
+    std::vector<Point> splitPoints = {Point(100.0, 100.0)};
+
+    auto splits = CircuitDecomposer::splitStrokeAtPoints(longWire.get(), splitPoints);
+    ASSERT_EQ(splits.size(), 2u);
+
+    // Sub 0: (100, 20) -> (100, 100)
+    EXPECT_NEAR(splits[0]->getPoint(0).y, 20.0, 1e-3);
+    EXPECT_NEAR(splits[0]->getPoint(splits[0]->getPointCount() - 1).y, 100.0, 1e-3);
+
+    // Sub 1: (100, 100) -> (100, 180)
+    EXPECT_NEAR(splits[1]->getPoint(0).y, 100.0, 1e-3);
+    EXPECT_NEAR(splits[1]->getPoint(splits[1]->getPointCount() - 1).y, 180.0, 1e-3);
 }

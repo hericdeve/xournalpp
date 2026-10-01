@@ -228,11 +228,11 @@ void CircuitGraph::pruneSpursAndMerge() {
             int keepNodeId = -1;
             int dropNodeId = -1;
             
-            if (nodes[branch.nodeA].degree == 1 && nodes[branch.nodeB].degree > 1 && branch.pixelPath.size() < 25) {
+            if (nodes[branch.nodeA].degree == 1 && nodes[branch.nodeB].degree > 1 && branch.pixelPath.size() < 5) {
                 isSpur = true;
                 keepNodeId = branch.nodeB;
                 dropNodeId = branch.nodeA;
-            } else if (nodes[branch.nodeB].degree == 1 && nodes[branch.nodeA].degree > 1 && branch.pixelPath.size() < 25) {
+            } else if (nodes[branch.nodeB].degree == 1 && nodes[branch.nodeA].degree > 1 && branch.pixelPath.size() < 5) {
                 isSpur = true;
                 keepNodeId = branch.nodeA;
                 dropNodeId = branch.nodeB;
